@@ -1,0 +1,20 @@
+name: build-windows
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build (tests, PyInstaller, self-test, zip)
+        shell: pwsh
+        run: ./packaging/build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CWStation-win64
+          path: dist/CWStation-*-win64.zip
