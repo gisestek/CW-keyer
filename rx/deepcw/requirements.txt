@@ -1,0 +1,5 @@
+numpy>=1.24
+onnxruntime>=1.17
+soxr>=0.3
+sounddevice>=0.4.6
+soundfile>=0.12
