@@ -2,15 +2,15 @@
 
 Tietokoneohjelma, joka tulkitsee radiosta kuuluvan sähkötyksen tekstiksi ja lähettää kirjoittamasi tekstin takaisin CW:nä, eli CW-yhteydet onnistuvat ilman omaa sähkötystaitoa.
 
-Radion avainnus hoituu pikku mikrokontrollerilla (Wemos D1 mini, ESP8266), joka sulkee WiFi-käskystä radion avainlinjan kytkimellä: kokeiluun riittää tavallinen mekaaninen relekortti, mutta pysyvään asennukseen kannattaa vaihtaa reed-rele (luotettava G90:n kaltaisella muutaman voltin kuivalla kontaktilla) tai PhotoMOS-rele, esim. PVT412 (400 V, napaisuudeton, ei kulu – kestää myös putkiradion negatiivisen hilajännitteen).
+![CW Station 0.3.0](docs/screenshot-0.3.0.png)
+
+Radion avainnus hoituu mikrokontrollerilla (Wemos D1 mini, ESP8266), joka sulkee WiFi-käskystä radion avainlinjan kytkimellä: kokeiluun riittää tavallinen mekaaninen relekortti, mutta pysyvään asennukseen kannattaa vaihtaa reed-rele tai PhotoMOS-rele, esim. PVT412 (400 V, napaisuudeton, ei kulu – kestää myös putkiradion negatiivisen hilajännitteen).
 
 ```
 radio --ääni--> PC (CW Station) --WiFi--> Wemos D1 mini --D1--> rele --> radion KEY-jakki
                                                                           tip = avain
                                                                           sleeve = maa
 ```
-
-Rele kytketään NO-koskettimilla, joten ilman virtaa tai resetin aikana radio ei lähetä.
 
 | Kansio | Sisältö |
 | --- | --- |
