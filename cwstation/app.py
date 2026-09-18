@@ -9,12 +9,17 @@ import logging
 import threading
 from pathlib import Path
 
+from .core import adif
 from .core.bus import Bus
+from .core.qso import QsoSession
 from .core.resources import model_dir
-from .core.settings import Settings
+from .core.settings import Settings, config_dir
 from .core.textlog import TextLog
-from .rx.audio import SoundCardSource, WavSource
+from .core.txwindows import TxWindows
+from .core.wavelog import WavelogClient
+from .rx.audio import SimulatedRadioSource, SoundCardSource, WavSource
 from .rx.rx_module import RxModule
+from .tx.cq import CqRepeater
 from .tx.keyer_client import KeyerClient
 from .tx.tx_module import TxModule
 
@@ -42,19 +47,45 @@ class Station:
             url = settings.get("keyer.url")
         initial = {k: settings.get(f"keyer.{k}") for k in KEYER_SET_KEYS}
         self.keyer = KeyerClient(self.bus, url, initial_set=initial, simulated=sim_keyer)
-        self.tx = TxModule(self.bus, settings, self.keyer)
+        self.qso = QsoSession(self.bus, settings)
+        self.tx = TxModule(self.bus, settings, self.keyer, qso=self.qso)
+        self.tx_windows = TxWindows(self.bus)
+        self.cq = CqRepeater(self.bus, settings)
+        self.wavelog = WavelogClient(self.bus, settings, config_dir() / "wavelog-queue.jsonl")
         self.textlog = TextLog(self.bus, settings.log_folder(), float(settings.get("log.line_pause_s", 3.0)))
-        self.rx = RxModule(self.bus, model_dir(), self._make_source)
+        self.rx = RxModule(self.bus, model_dir(), self._make_source, tx_windows=self.tx_windows)
         self._shutdown_done = False
 
     def _make_source(self):
+        if self.sim_keyer and self._sim:
+            return SimulatedRadioSource(self._sim["sim"], self.wav)
         if self.wav:
             return WavSource(self.wav, loop=True, realtime=True)
         return SoundCardSource(self.settings.get("audio.device", ""),
                                int(self.settings.get("audio.samplerate", 48000)),
                                int(self.settings.get("audio.channel", 0)))
 
+    def adif_path(self) -> Path:
+        custom = self.settings.get("qso.adif_file") or ""
+        return Path(custom) if custom else self.settings.log_folder() / "cwstation.adi"
+
+    def log_qso(self, freq_mhz: float | None = None, tx_pwr: str = "", to_wavelog: bool | None = None) -> dict:
+        """Write the current QSO to the ADIF file and (optionally) send it to Wavelog (UC6)."""
+        if freq_mhz is None:
+            freq_mhz = float(self.settings.get("qso.freq_mhz") or 0) or None
+        record = self.qso.to_adif_dict(freq_mhz, tx_pwr or str(self.settings.get("qso.tx_pwr", "")))
+        path = self.adif_path()
+        text = adif.append_qso(path, record)
+        log.info("QSO logged: %s -> %s", record.get("call"), path)
+        send = self.wavelog.enabled() if to_wavelog is None else to_wavelog
+        if send:
+            self.wavelog.send(text, record.get("call", ""))
+        self.bus.publish("qso.logged", call=record.get("call", ""), path=str(path), adif=text, wavelog=send)
+        self.qso.clear()
+        return record
+
     def start(self) -> None:
+        self.wavelog.start()
         self.keyer.start()
         self.rx.start()
         threading.Thread(target=self._tick, name="ticker", daemon=True).start()
@@ -86,6 +117,8 @@ class Station:
             return
         self._shutdown_done = True
         log.info("shutdown: sending STOP")
+        self.cq.stop("shutdown")
+        self.wavelog.stop()
         try:
             self.bus.publish("tx.stop", reason="shutdown")
         finally:

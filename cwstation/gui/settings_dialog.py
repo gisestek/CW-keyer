@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFormLayout,
+    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QSpinBox, QTabWidget, QTableWidget,
+    QTableWidgetItem, QVBoxLayout, QWidget,
 )
+
+from PySide6.QtCore import Qt
 
 from ..core import i18n
 from ..core.i18n import tr
@@ -97,12 +100,90 @@ class SettingsDialog(QDialog):
         f.addRow(tr("settings.log.pause"), self.pause)
         tabs.addTab(w, tr("settings.tab.log"))
 
+        # QSO / ADIF
+        w = QWidget(); f = QFormLayout(w)
+        row = QHBoxLayout()
+        self.adif_file = QLineEdit(settings.get("qso.adif_file", ""))
+        adif_browse = QPushButton(tr("settings.log.browse"))
+        adif_browse.clicked.connect(self._browse_adif)
+        row.addWidget(self.adif_file, 1)
+        row.addWidget(adif_browse)
+        f.addRow(tr("settings.qso.adif"), row)
+        self.tx_pwr = QLineEdit(str(settings.get("qso.tx_pwr", "")))
+        f.addRow(tr("settings.qso.power"), self.tx_pwr)
+        self.cq_interval = QSpinBox(minimum=2, maximum=120, value=int(settings.get("cq.interval_s", 8)))
+        f.addRow(tr("settings.cq.interval"), self.cq_interval)
+        tabs.addTab(w, tr("qso.title"))
+
+        # Wavelog
+        w = QWidget(); f = QFormLayout(w)
+        wl = settings.get("wavelog", {}) or {}
+        self.wl_enabled = QCheckBox()
+        self.wl_enabled.setChecked(bool(wl.get("enabled")))
+        f.addRow(tr("settings.wavelog.enabled"), self.wl_enabled)
+        self.wl_url = QLineEdit(wl.get("url", ""))
+        self.wl_url.setPlaceholderText("https://wavelog.example.com")
+        f.addRow(tr("settings.wavelog.url"), self.wl_url)
+        self.wl_key = QLineEdit(wl.get("key", ""))
+        self.wl_key.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+        f.addRow(tr("settings.wavelog.key"), self.wl_key)
+        self.wl_profile = QLineEdit(str(wl.get("station_profile_id", "")))
+        f.addRow(tr("settings.wavelog.profile"), self.wl_profile)
+        test = QPushButton(tr("settings.wavelog.test"))
+        test.clicked.connect(self._test_wavelog)
+        self.wl_result = QLabel("")
+        self.wl_result.setWordWrap(True)
+        f.addRow(test, self.wl_result)
+        tabs.addTab(w, tr("settings.tab.wavelog"))
+
+        # Macros
+        w = QWidget(); lay = QVBoxLayout(w)
+        keys = sorted((settings.get("macros") or {}).keys())
+        self.macro_table = QTableWidget(len(keys), 3)
+        self.macro_table.setHorizontalHeaderLabels(
+            [tr("settings.macros.key"), tr("settings.macros.label"), tr("settings.macros.text")])
+        self.macro_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.macro_table.verticalHeader().setVisible(False)
+        for r, key in enumerate(keys):
+            m = settings.get(f"macros.{key}") or {}
+            item = QTableWidgetItem(key)
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            self.macro_table.setItem(r, 0, item)
+            self.macro_table.setItem(r, 1, QTableWidgetItem(m.get("label", "")))
+            self.macro_table.setItem(r, 2, QTableWidgetItem(m.get("text", "")))
+        lay.addWidget(self.macro_table)
+        lay.addWidget(QLabel(tr("settings.macros.note")))
+        tabs.addTab(w, tr("settings.tab.macros"))
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         lay = QVBoxLayout(self)
         lay.addWidget(tabs)
         lay.addWidget(buttons)
+
+    def _browse_adif(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, tr("settings.qso.adif"), self.adif_file.text() or "cwstation.adi",
+                                              "ADIF (*.adi *.adif)")
+        if path:
+            self.adif_file.setText(path)
+
+    def _test_wavelog(self) -> None:
+        from ..core.bus import Bus
+        from ..core.wavelog import WavelogClient
+
+        probe = {"wavelog": {"enabled": True, "url": self.wl_url.text().strip(),
+                             "key": self.wl_key.text().strip(),
+                             "station_profile_id": self.wl_profile.text().strip()}}
+
+        class _S:
+            def get(self, name, default=None):
+                return probe.get(name, default) if "." not in name else default
+
+        client = WavelogClient(Bus(), _S(), self.s.path.parent / "wavelog-test.jsonl")
+        ok, msg = client.post("<CALL:4>TEST<QSO_DATE:8>19700101<TIME_ON:6>000000<BAND:3>40m"
+                              "<MODE:2>CW<RST_SENT:3>599<RST_RCVD:3>599<EOR>")
+        self.wl_result.setText(tr("settings.wavelog.ok") if ok else tr("settings.wavelog.fail", msg=msg[:200]))
 
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(self, tr("settings.log.folder"), self.log_folder.text())
@@ -127,3 +208,14 @@ class SettingsDialog(QDialog):
         s.set("keyer.tx_max_ms", self.txmax.value())
         s.set("log.folder", self.log_folder.text().strip())
         s.set("log.line_pause_s", self.pause.value())
+        s.set("qso.adif_file", self.adif_file.text().strip())
+        s.set("qso.tx_pwr", self.tx_pwr.text().strip())
+        s.set("cq.interval_s", self.cq_interval.value())
+        s.set("wavelog.enabled", self.wl_enabled.isChecked())
+        s.set("wavelog.url", self.wl_url.text().strip())
+        s.set("wavelog.key", self.wl_key.text().strip())
+        s.set("wavelog.station_profile_id", self.wl_profile.text().strip())
+        for r in range(self.macro_table.rowCount()):
+            key = self.macro_table.item(r, 0).text()
+            s.set(f"macros.{key}.label", (self.macro_table.item(r, 1) or QTableWidgetItem("")).text().strip())
+            s.set(f"macros.{key}.text", (self.macro_table.item(r, 2) or QTableWidgetItem("")).text().strip())

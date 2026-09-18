@@ -11,6 +11,7 @@ import asyncio
 import json
 import threading
 import time
+from collections import deque
 
 MORSE = {
     "A": ".-", "B": "-...", "C": "-.-.", "D": "-..", "E": ".", "F": "..-.", "G": "--.", "H": "....",
@@ -38,6 +39,7 @@ class KeyerSim:
         self.tx_since = time.monotonic()
         self._worker: asyncio.Task | None = None
         self.keyed_ms = 0.0  # total simulated key-down time (for tests)
+        self.key_log: deque = deque(maxlen=4000)  # (time.monotonic(), key_down) transitions, for the sidetone simulator
 
     # -- messaging --
     async def _send(self, ws, obj):
@@ -59,7 +61,7 @@ class KeyerSim:
         self.queue.clear()
         if self._worker and not self._worker.done():
             self._worker.cancel()
-        self.key = False
+        self._set_key(False)
         was_busy = self.busy
         self.busy = False
         if fault:
@@ -72,8 +74,13 @@ class KeyerSim:
         if not self._worker or self._worker.done():
             self._worker = asyncio.get_running_loop().create_task(self._run())
 
-    async def _elem(self, ms: float, key: bool):
+    def _set_key(self, key: bool) -> None:
+        if key != self.key:
+            self.key_log.append((time.monotonic(), key))
         self.key = key
+
+    async def _elem(self, ms: float, key: bool):
+        self._set_key(key)
         if key:
             self.keyed_ms += ms
         await asyncio.sleep(ms / 1000)
@@ -110,7 +117,7 @@ class KeyerSim:
                 if not prosign:
                     await self._elem(2 * dit, False)
         finally:
-            self.key = False
+            self._set_key(False)
             if self.busy:
                 self.busy = False
                 await self.broadcast({"ev": "state", "busy": False, "key": False, "pending": 0, "controller": 0})

@@ -11,7 +11,8 @@ Jokaisessa viestissä on kentät `type` ja `utc` (ISO 8601, esim. `2026-09-17T12
 | `rx.status` | `state` (`running`/`stopped`/`error`), `source`, `msg` | äänilähde käynnistyy, pysähtyy tai vikaantuu; `msg` = `model_missing:<polku>` jos malli puuttuu |
 | `rx.level` | `rms_dbfs`, `peak_dbfs`, `tone_hz`, `warning` (`""`/`clip`/`weak`/`tone`) | noin 4 kertaa sekunnissa (FR-RX-04) |
 | `rx.pending` | `text` | esikatselu muuttui (voi vielä muuttua) |
-| `rx.text` | `text`, `t_start`, `t_end` | vahvistettu tulkinta (FR-RX-03) |
+| `rx.text` | `text`, `t_start`, `t_end`, `own_tx`, `words` (`[[sana, alku, loppu], …]`) | vahvistettu tulkinta (FR-RX-03). `own_tx: true` = oman lähetyksen sivuääni (UC13); omat ja vastaaseman merkit erotellaan merkkikohtaisesti eri viesteiksi |
+| `rx.spectrum` | `t0`, `dt`, `f0`, `df`, `cols` (`[[dB×2, …], …]`) | vesiputousnäytön sarakkeet, noin 10 viestiä sekunnissa (15 ms/sarake, 6,25 Hz/bin, 100–1500 Hz) |
 
 ## GUI → TX-moduuli
 
@@ -26,7 +27,7 @@ Jokaisessa viestissä on kentät `type` ja `utc` (ISO 8601, esim. `2026-09-17T12
 | type | Kentät | Milloin |
 | --- | --- | --- |
 | `tx.queued` | `text` | teksti hyväksytty keyerille (tarkat merkit, jotka kaiutetaan) |
-| `tx.warning` | `code` (`not_connected`/`dropped_chars`/`no_callsign`), `detail` | lähetystä ei tehty tai merkkejä pudotettiin |
+| `tx.warning` | `code` (`not_connected`/`dropped_chars`/`no_callsign`/`no_call`), `detail` | lähetystä ei tehty tai merkkejä pudotettiin. `no_call` = makro tarvitsee `{CALL}`-muuttujan, mutta vastaaseman tunnusta ei ole |
 | `tx.echo` | `ch` | keyer aloitti merkin lähettämisen (FR-TX-03); myös `" "`, `"<"`, `">"` |
 | `tx.state` | `busy`, `key`, `pending` | lähetys alkoi tai päättyi |
 | `tx.stopped` | `reason` | jono tyhjennettiin (STOP, vika, yhteyskatkos) |
@@ -34,5 +35,16 @@ Jokaisessa viestissä on kentät `type` ja `utc` (ISO 8601, esim. `2026-09-17T12
 | `keyer.status` | `state` (`connecting`/`connected`/`disconnected`), `url`, `host`, `fw`, `version`, `simulated` | yhteyden tila |
 | `keyer.config` | `cfg` | keyerin asetukset muuttuivat |
 | `keyer.error` | `code`, `msg` | keyer vastasi virheellä tai toinen ohjelma otti ohjauksen (`CONTROL_LOST`) |
+
+## QSO ja loki (0.3.0)
+
+| type | Kentät | Milloin |
+| --- | --- | --- |
+| `qso.update` | `fields` (`call`, `name`, `qth`, `gridsquare`, `rst_sent`, `rst_rcvd`, `comment`) | käynnissä olevan QSO:n kentät muuttuivat: tulkittu teksti, tunnuksen klikkaus tai käsin muokattu kenttä |
+| `qso.logged` | `call`, `path` (ADIF-tiedosto), `adif` (tietue), `wavelog` (`true`/`false`) | QSO kirjoitettiin ADIF-tiedostoon (FR-CORE-04). Tämän jälkeen kentät nollataan (`qso.update` tyhjillä kentillä) |
+| `wavelog.status` | `state` (`queued`/`sent`/`error`), `pending` (jonon pituus), `call`, `msg`? | QSO lisättiin lähetysjonoon, lähti Wavelogiin tai lähetys epäonnistui (FR-CORE-05). Jonoa yritetään uudelleen 30 s välein |
+| `cq.state` | `active`, `reason` (`start`/`toggle`/`answer`/`manual`/`stop`/`no_macro`/`shutdown`) | CQ-toisto alkoi tai päättyi (FR-TX-07). `answer` = vastaanotettiin tekstiä, `manual` = operaattori lähetti itse, `stop` = STOP |
+
+CQ-toisto lähettää makronsa tavallisena `tx.send`-viestinä, joten se näkyy muille moduuleille samoin kuin käsin kirjoitettu lähetys.
 
 Keyerin oma protokolla (WebSocket JSON) on kuvattu tiedostossa `firmware/cwkeyer-esp8266/PROTOCOL.md`.

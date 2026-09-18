@@ -135,6 +135,8 @@ class StreamEvent:
     audio_start_s: float     # pätkän alku striimin aikajanalla (s)
     audio_end_s: float
     infer_ms: float = 0.0
+    words: list = field(default_factory=list)  # [(text, start_s, end_s)] on the stream time line
+    chars: list = field(default_factory=list)  # [(char, start_s, end_s)] including spaces
 
 
 class StreamingDecoder:
@@ -208,6 +210,14 @@ class StreamingDecoder:
 
         if force_all:
             split_sample, end_frame = n, res.frames
+        elif not new_spans and n - self._skip > 2 * self._guard:
+            # nothing but silence/noise: drop it so the buffer (and latency) stays small
+            split_sample, end_frame = n - self._guard, res.frames
+        elif new_spans and n - self._frame_to_sample(new_spans[-1].end_frame + 1) >= self._guard:
+            # the transmission has ended (silent tail): confirm everything now instead of
+            # waiting for a word space or the 20 s buffer limit
+            last_end = self._frame_to_sample(new_spans[-1].end_frame + 1)
+            split_sample, end_frame = min(n, last_end + self._guard // 2), res.frames
         else:
             split = self._find_split(res, n, allow_near_end=False)
             if split is None and len(self._buf) >= self._max:
@@ -218,15 +228,40 @@ class StreamingDecoder:
                 return events
             split_sample, end_frame = split
 
-        text = normalize_text("".join(c.char for c in new_spans if c.end_frame <= end_frame))
+        final_spans = [c for c in new_spans if c.end_frame <= end_frame]
+        text = normalize_text("".join(c.char for c in final_spans))
         if text:
-            events.append(StreamEvent("final", text, self._time(self._skip), self._time(split_sample), dt))
+            events.append(StreamEvent("final", text, self._time(self._skip), self._time(split_sample), dt,
+                                      words=self._words(final_spans), chars=self._chars(final_spans)))
         new_start = max(0, split_sample - self._preroll) if not force_all else split_sample
         self._buf = self._buf[new_start:]
         self._offset += new_start
         self._skip = split_sample - new_start
         self.last_pending = ""
         return events
+
+    def _chars(self, spans: list[CharSpan]) -> list[tuple[str, float, float]]:
+        return [(c.char, self._time(self._frame_to_sample(c.start_frame)),
+                 self._time(self._frame_to_sample(c.end_frame + 1))) for c in spans]
+
+    def _words(self, spans: list[CharSpan]) -> list[tuple[str, float, float]]:
+        """Group character spans into words with their times (seconds on the stream time line)."""
+        words, cur, t0, t1 = [], "", 0.0, 0.0
+        for c in spans:
+            if c.char == " ":
+                if cur:
+                    words.append((cur, t0, t1))
+                cur = ""
+                continue
+            ts = self._time(self._frame_to_sample(c.start_frame))
+            te = self._time(self._frame_to_sample(c.end_frame + 1))
+            if not cur:
+                t0 = ts
+            cur += c.char
+            t1 = te
+        if cur:
+            words.append((cur, t0, t1))
+        return words
 
     def _find_split(self, res: DecodeResult, n: int, allow_near_end: bool):
         min_sample = self._skip + self._min_conf

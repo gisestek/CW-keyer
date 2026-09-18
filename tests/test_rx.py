@@ -14,7 +14,8 @@ def test_rx_decodes_wav(tmp_path):
     wav = tmp_path / "cq.wav"
     sf.write(str(wav), cw_audio("CQ CQ DE OH2BH OH2BH K", wpm=22, fs=48000, snr_db=6, seed=2), 48000)
     bus = Bus()
-    texts, levels, pend = [], [], []
+    texts, levels, pend, spec = [], [], [], []
+    bus.subscribe("rx.spectrum", lambda m: spec.append(m))
     bus.subscribe("rx.text", lambda m: texts.append(m))
     bus.subscribe("rx.level", lambda m: levels.append(m))
     bus.subscribe("rx.pending", lambda m: pend.append(m))
@@ -27,6 +28,8 @@ def test_rx_decodes_wav(tmp_path):
     assert all(m["t_end"] >= m["t_start"] for m in texts)
     assert levels and any(600 <= l["tone_hz"] <= 800 for l in levels)
     assert any(p["text"] for p in pend)
+    assert spec and len(spec[0]["cols"][0]) > 100 and spec[0]["f0"] >= 100
+    assert all(m["own_tx"] is False for m in texts)
 
 
 def test_level_meter_warnings():

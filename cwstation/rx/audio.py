@@ -158,6 +158,84 @@ class WavSource(AudioSource):
         return out
 
 
+class SimulatedRadioSource(AudioSource):
+    """Development audio: band noise (or a looping WAV) plus the sidetone of the keyer simulator.
+
+    Lets the whole RX/TX path, the waterfall and the own-transmission reference
+    line be tried without a radio.
+    """
+
+    def __init__(self, sim, wav: Path | None = None, samplerate: int = 48000, tone_hz: float = 600.0):
+        self.sim = sim
+        self.samplerate = samplerate
+        self.tone_hz = tone_hz
+        self.name = "Simulated radio" + (f" + {Path(wav).name}" if wav else "")
+        self._wav = WavSource(wav, loop=True, realtime=False) if wav else None
+        if self._wav and self._wav.samplerate != samplerate:
+            import soxr
+
+            self._wav._data = soxr.resample(self._wav._data, self._wav.samplerate, samplerate).astype(np.float32)
+            self._wav.samplerate = samplerate
+        self._rng = np.random.default_rng(1)
+        self._phase = 0.0
+        self._env_tail = np.zeros(0, dtype=np.float32)
+        self._t_next = 0.0
+        self._running = False
+
+    def start(self) -> None:
+        if self._wav:
+            self._wav.start()
+        self._t_next = time.monotonic()
+        self._running = True
+
+    def stop(self) -> None:
+        self._running = False
+
+    def _envelope(self, t0: float, n: int) -> np.ndarray:
+        times = t0 + np.arange(n) / self.samplerate
+        env = np.zeros(n, dtype=np.float32)
+        log = list(self.sim.key_log)
+        state = False
+        for t, k in log:
+            if t <= t0:
+                state = k
+        env[:] = 1.0 if state else 0.0
+        for t, k in log:
+            if t0 < t < times[-1]:
+                i = int((t - t0) * self.samplerate)
+                env[i:] = 1.0 if k else 0.0
+        return env
+
+    def read(self, timeout: float) -> np.ndarray | None:
+        if not self._running:
+            return None
+        block = self.samplerate // 20
+        # render only the past: key events inside this block must already be logged
+        wait = self._t_next + block / self.samplerate - time.monotonic()
+        if wait > timeout:
+            time.sleep(timeout)
+            return None
+        if wait > 0:
+            time.sleep(wait)
+        t0 = self._t_next
+        self._t_next += block / self.samplerate
+        base = self._wav.read(0) if self._wav else None
+        if base is None or len(base) != block:
+            base = self._rng.normal(0, 0.01, block).astype(np.float32)
+        env = self._envelope(t0, block)
+        ph = self._phase + 2 * np.pi * self.tone_hz * np.arange(block) / self.samplerate
+        self._phase = float(ph[-1] + 2 * np.pi * self.tone_hz / self.samplerate) % (2 * np.pi)
+        # 4 ms raised-cosine edges like a real transmitter (no key clicks on the waterfall)
+        k = np.hanning(int(0.008 * self.samplerate) + 1).astype(np.float32)
+        k /= k.sum()
+        if len(self._env_tail) != len(k) - 1:
+            self._env_tail = np.zeros(len(k) - 1, dtype=np.float32)
+        raw = np.concatenate([self._env_tail, env])
+        self._env_tail = raw[-(len(k) - 1):]
+        env = np.convolve(raw, k, mode="valid")
+        return (base + 0.25 * env * np.sin(ph)).astype(np.float32)
+
+
 class LevelMeter:
     """RMS/peak in dBFS and strongest tone 300–1500 Hz over ~0.25 s windows (FR-RX-04)."""
 

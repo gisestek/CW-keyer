@@ -22,10 +22,11 @@ log = logging.getLogger(__name__)
 
 
 class TxModule:
-    def __init__(self, bus: Bus, settings, client: KeyerClient):
+    def __init__(self, bus: Bus, settings, client: KeyerClient, qso=None):
         self.bus = bus
         self.settings = settings
         self.client = client
+        self.qso = qso   # core.qso.QsoSession: provides {CALL} {NAME} {RST} {RSTR}
         bus.subscribe("tx.send", self._on_send)
         bus.subscribe("tx.stop", self._on_stop)
         bus.subscribe("tx.set", self._on_set)
@@ -33,8 +34,16 @@ class TxModule:
     def _on_send(self, msg: dict) -> None:
         raw = msg.get("text", "")
         vars_ = macros.station_variables(self.settings)
+        if self.qso is not None:
+            f = self.qso.fields()
+            vars_.update({"CALL": f.get("call", ""), "NAME": (f.get("name", "") or "").upper(),
+                          "QTH": (f.get("qth", "") or "").upper(),
+                          "RST": f.get("rst_sent", "") or "599", "RSTR": f.get("rst_rcvd", "") or ""})
         if "{MYCALL}" in raw.upper() and not vars_["MYCALL"]:
             self.bus.publish("tx.warning", code="no_callsign", detail="")
+            return
+        if "{CALL}" in raw.upper() and not vars_.get("CALL"):
+            self.bus.publish("tx.warning", code="no_call", detail="")
             return
         text, dropped = macros.sanitize(macros.expand(raw, vars_))
         if dropped:
