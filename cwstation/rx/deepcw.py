@@ -137,6 +137,9 @@ class StreamEvent:
     infer_ms: float = 0.0
     words: list = field(default_factory=list)  # [(text, start_s, end_s)] on the stream time line
     chars: list = field(default_factory=list)  # [(char, start_s, end_s)] including spaces
+    char_tones: list = field(default_factory=list)  # pitch (Hz) per character, None where unclear
+    audio: object = None       # the audio this event was decoded from (model sample rate)
+    audio_t0: float = 0.0      # stream time of audio[0], for measuring the signal later
 
 
 class StreamingDecoder:
@@ -232,7 +235,9 @@ class StreamingDecoder:
         text = normalize_text("".join(c.char for c in final_spans))
         if text:
             events.append(StreamEvent("final", text, self._time(self._skip), self._time(split_sample), dt,
-                                      words=self._words(final_spans), chars=self._chars(final_spans)))
+                                      words=self._words(final_spans), chars=self._chars(final_spans),
+                                      char_tones=self._tones(final_spans, audio),
+                                      audio=audio, audio_t0=self._time(0)))
         new_start = max(0, split_sample - self._preroll) if not force_all else split_sample
         self._buf = self._buf[new_start:]
         self._offset += new_start
@@ -243,6 +248,21 @@ class StreamingDecoder:
     def _chars(self, spans: list[CharSpan]) -> list[tuple[str, float, float]]:
         return [(c.char, self._time(self._frame_to_sample(c.start_frame)),
                  self._time(self._frame_to_sample(c.end_frame + 1))) for c in spans]
+
+    def _tones(self, spans: list[CharSpan], audio: np.ndarray) -> list[float | None]:
+        """Pitch of every character, measured from the audio the decoder just saw."""
+        from .signal_info import tone_hz
+
+        margin = 2 * self.m.hop
+        out: list[float | None] = []
+        for c in spans:
+            if c.char == " ":
+                out.append(None)
+                continue
+            a = self._frame_to_sample(c.start_frame)
+            b = self._frame_to_sample(c.end_frame + 1)
+            out.append(tone_hz(audio, self.m.sample_rate, a, b, margin))
+        return out
 
     def _words(self, spans: list[CharSpan]) -> list[tuple[str, float, float]]:
         """Group character spans into words with their times (seconds on the stream time line)."""

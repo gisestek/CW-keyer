@@ -27,6 +27,10 @@ Releen COM ───────────── avainjakin sleeve
 
 Asetukset `config.h`: `KEY_PIN D1`, `KEY_ACTIVE_LOW 0`.
 
+![Wemos D1 minin kytkentä: D1, G ja 5V relekortille](../../hardware/wemos-wiring.jpg)
+
+Johdot ovat Wemosin alarivissä: **D1** relekortin IN-nastaan, **G** GND:hen ja **5V** VCC:hen. Koko rajapinta on kuvassa [`hardware/interface-proto.jpg`](../../hardware/interface-proto.jpg).
+
 - **Älä käytä D4:ää (GPIO2):** ESP8266 pulssittaa sitä käynnistyksessä, resetissä ja flashauksessa, jolloin rele naksahtaa.
 - **10k D1 → GND** pitää IN-nastan matalana käynnistyksen aikana.
 - **NO-koskettimet:** kun Wemos on ilman virtaa tai resetissä, radio ei lähetä.

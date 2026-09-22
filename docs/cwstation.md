@@ -1,10 +1,10 @@
 # CW Station – ohjelman käyttöohje
 
-Versio 0.3.0 · 2026-09-17 · AGPL-3.0-or-later
+Versio 0.5.0 · 2026-09-22 · AGPL-3.0-or-later
 
 Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [DeepCW](https://github.com/e04/deepcw-engine) tulkitsee vastaanotetun äänen tekstiksi, ja samasta ikkunasta kirjoitettu teksti lähtee radioon WiFi-keyerin kautta. Vaatimukset: `CW-asema – vaatimusmäärittely.md`.
 
-![CW Station 0.3.0](screenshot-0.3.0.png)
+![CW Station 0.5.0](screenshot-0.5.0.png)
 
 ## Projektin osat
 
@@ -18,6 +18,21 @@ Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [Dee
 | `packaging/` | Windows-paketointi (PyInstaller) |
 | `tests/` | Automaattiset testit |
 | `third_party/deepcw-engine/` | DeepCW-malli (AGPL-3.0) |
+
+## Uutta versiossa 0.5.0
+
+- **Signaalin voimakkuus ja RST-ehdotus:** ohjelma mittaa vastaaseman signaali-kohinasuhteen 500 Hz:n kaistassa ja ehdottaa siitä raportin. Ehdotus näkyy työkalurivillä muodossa `569 (+17 dB)` ja menee automaattisesti QSO:n *RST s* -kenttään, kunnes lähetät raportin itse — silloin oma lähetetty raportti voittaa. Mittaus on tarkistettu synteettisellä signaalilla välillä −6…+30 dB: virhe noin ±2 dB.
+  - S-yksikkö on 6 dB: `+30 dB → S9`, `+18 → S7`, `+6 → S5`, `0 → S4`. Luettavuus R on 5, kun SNR on vähintään +6 dB, ja putoaa siitä 6 dB:n välein. T on aina 9.
+  - **Tämä on arvio äänen perusteella, ei S-mittarin lukema:** AF-vahvistus, AGC ja suotimen leveys eivät vaikuta suhdelukuun, mutta antennin ja radion kalibrointia ohjelma ei tiedä. Tarkista ehdotus ennen lokitusta.
+- **Vesiputouksen asemamerkit oikeassa laidassa:** jokaisen tulkitun aseman taajuudella on kolmio samalla värillä kuin aseman teksti, eli näkee suoraan, mistä kohtaa kaistaa merkit tulkitaan. Elävä voimakkain sävel siirtyi vasempaan laitaan valkoiseksi viivaksi.
+
+## Uutta versiossa 0.4.0
+
+DeepCW:n tulkinnasta ja äänestä irtoaa enemmän tietoa kuin pelkkä teksti. Versio 0.4.0 käyttää siitä kolme asiaa:
+
+- **Vastaaseman nopeus ja *Match*-painike:** työkalurivi näyttää, montako sanaa minuutissa vastaasema lähettää. *Match* asettaa oman nopeuden samaksi yhdellä klikkauksella. Nopeus lasketaan tulkittujen merkkien aikajanasta (sovitus merkin alkuhetki vs. morsen yksikkömäärä), joten se toimii myös heikolla signaalilla, vaikka muutama merkki menisi väärin. Synteettisellä CW:llä virhe on alle 0,5 % välillä 13–35 WPM aina −10 dB:n signaali-kohinasuhteeseen asti.
+- **Asemien erottelu sävelkorkeuden mukaan:** jokaisen tulkitun merkin sävelkorkeus mitataan (tarkkuus noin 1 Hz). Samassa suotimessa kuuluvat eri asemat päätyvät omille riveilleen ja omalla värillään (vihreä, violetti, ruskea), ja vesiputoukseen piirtyy pisteviiva kunkin aseman taajuudelle. Yksittäinen mittausvirhe ei riitä vaihtamaan asemaa, vaan vaihdon pitää kestää vähintään kolme merkkiä.
+- **Δ Hz eli poikkeama nollalyönnistä:** ohjelma vertaa vastaaseman sävelkorkeutta oman lähetyksen sivuääneen ja näyttää eron hertseinä. `+20 Hz` tarkoittaa, että vastaasema kuuluu 20 Hz omaa sivuääntä korkeampana, eli VFO on 20 Hz sivussa. Näkyy vasta, kun ero on vähintään 10 Hz, ja vaatii että oma sivuääni kuuluu äänikortille.
 
 ## Uutta versiossa 0.3.0
 
@@ -64,6 +79,9 @@ Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [Dee
 | FR-CORE-04 ADIF-loki (0.3.0) | *Log QSO* (Ctrl+L) → ADIF 3.1.4 -tietue tiedostoon `cwstation.adi` |
 | FR-CORE-05 Wavelog (0.3.0) | `POST <url>/api/qso`, uudelleenyritys jonosta 30 s välein |
 | FR-CORE-06 tunnusten tunnistus (0.3.0) | Tekstivirran tunnukset ovat linkkejä; klikkaus asettaa vastaaseman |
+| FR-RX-08 asemien erottelu (0.4.0) | Merkkikohtainen sävelkorkeus: eri asemat eri riveille ja väreille, merkinnät vesiputoukseen |
+| FR-RX-09 nopeus ja taajuusero (0.4.0) | Vastaaseman WPM, *Match*-painike ja Δ Hz omaan sivuääneen |
+| FR-CORE-07 RST-ehdotus (0.5.0) | SNR 500 Hz:n kaistassa → raporttiehdotus työkaluriville ja QSO-kenttään |
 | SR-01 STOP | Aina näkyvä STOP-painike ja Esc mistä tahansa; keyer nostaa avaimen alle 3 ms:ssa |
 | SR-02, SR-03 aikarajat | Keyer: avain alhaalla enintään 10,5 s, lähetys enintään 120 s ilman uutta tekstiä. Asetuksissa voi laskea |
 | SR-04 yhteyskatkos tai kaatuminen | Keyer pysähtyy 3 s:ssa, jos ohjelmasta ei kuulu mitään, ja heti, jos yhteys katkeaa |
@@ -73,7 +91,7 @@ Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [Dee
 | Vesiputous (0.2.0) | 100–1500 Hz, tulkin kaista ja omat lähetykset merkittyinä |
 | UC13 oman lähetyksen viite (0.2.0) | `ref`-rivi TX-rivin alla näytöllä ja `REF`-rivi lokissa. Automaattinen vertailu ja varoitus puuttuvat vielä |
 
-Automaattiset testit (`tests/`, 41 kpl) kattavat mm. STOP-painikkeen, Escin syöttörivillä, F1-makron, ikkunan sulkemisen kesken lähetyksen, yhteyskatkoksen, tekstilokin rivityksen, RX-tulkinnan WAV-tiedostosta, ref-rivin sijoittelun, omien ja vastaaseman merkkien erottelun, vesiputousdatan sekä 0.3.0:n osalta ADIF-muotoilun ja bänditaulukon, tunnusten tunnistuksen, kenttien poiminnan tekstistä, CQ-toiston ja Wavelog-lähetyksen (paikallinen testipalvelin, myös virhetilanne ja jono).
+Automaattiset testit (`tests/`, 69 kpl) kattavat mm. STOP-painikkeen, Escin syöttörivillä, F1-makron, ikkunan sulkemisen kesken lähetyksen, yhteyskatkoksen, tekstilokin rivityksen, RX-tulkinnan WAV-tiedostosta, ref-rivin sijoittelun, omien ja vastaaseman merkkien erottelun, vesiputousdatan sekä 0.3.0:n osalta ADIF-muotoilun ja bänditaulukon, tunnusten tunnistuksen, kenttien poiminnan tekstistä, CQ-toiston ja Wavelog-lähetyksen (paikallinen testipalvelin, myös virhetilanne ja jono). Versiossa 0.4.0 mukaan tulivat nopeusarvion tarkkuus, sävelkorkeuden mittaus, kohinan hylkääminen sekä kahden aseman erottelu samasta äänitiedostosta, ja 0.5.0:ssa SNR-mittauksen tarkkuus tunnetulla signaalilla, RST-taulukko ja raporttiehdotuksen päätyminen QSO-kenttään.
 
 ## Rakentaminen (kehityskone, Windows)
 
@@ -89,13 +107,13 @@ Skripti tekee seuraavat, 5–15 min:
 2. Ajaa testit.
 3. Rakentaa ohjelman PyInstallerilla.
 4. Ajaa valmiin ohjelman itsetestin: ikkuna näkyy noin 15 s, ja testi tarkistaa, että tulkinta ja lähetys toimivat.
-5. Pakkaa tuloksen tiedostoksi `dist\CWStation-0.3.0-win64.zip`.
+5. Pakkaa tuloksen tiedostoksi `dist\CWStation-0.5.0-win64.zip`.
 
 Vaihtoehto: GitHub Actions rakentaa saman zipin. Siirrä `packaging/github-build-windows.yml` polkuun `.github/workflows/build-windows.yml` ja pushaa GitHubiin; rakennus käynnistyy Actions-välilehdeltä (*Run workflow*) tai `v*`-tagista.
 
 ## Asennus radiokoneelle
 
-1. Kopioi `CWStation-0.3.0-win64.zip` radiokoneelle ja pura se esimerkiksi kansioon `C:\CWStation`. Pythonia ei tarvita.
+1. Kopioi `CWStation-0.5.0-win64.zip` radiokoneelle ja pura se esimerkiksi kansioon `C:\CWStation`. Pythonia ei tarvita.
 2. Käynnistä `CWStation\CWStation.exe`.
    - Windows SmartScreen voi varoittaa allekirjoittamattomasta ohjelmasta: *Lisätietoja → Suorita silti*.
    - Windowsin palomuuri voi kysyä verkkolupaa. Salli yksityiset verkot, jotta yhteys keyeriin toimii.
@@ -131,15 +149,22 @@ Tee testit järjestyksessä. Radio tekokuormaan pienellä teholla, kunnes kohdat
 | 16 | ADIF (0.3.0) | Taajuus työkaluriville, *Log QSO* → Ctrl+L, tarkista bändi ja paina *Log*. `cwstation.adi` sisältää tietueen, jonka esim. Wavelog tai LoTW-työkalu lukee |
 | 17 | Wavelog (0.3.0) | Tallennettu QSO näkyy Wavelogissa muutamassa sekunnissa. Katkaise verkko, tallenna QSO, kytke verkko: QSO lähtee itsestään noin 30 s:ssa ja tilarivin jono tyhjenee |
 | 18 | CQ-toisto (0.3.0) | CQ-painike toistaa makroa. Painikkeen napsautus uudelleen, STOP tai vastaaseman vastaus lopettaa toiston |
+| 19 | Nopeus ja Match (0.4.0) | Työkalurivillä näkyy vastaaseman WPM parin sanan jälkeen. *Match* muuttaa oman nopeuden samaksi, ja muutos kuuluu lähetyksessä |
+| 20 | Δ Hz (0.4.0) | Viritä VFO:ta 50 Hz sivuun: lukema muuttuu saman verran. Nollalyönnissä lukema katoaa (alle 10 Hz) |
+| 21 | Kaksi asemaa (0.4.0) | Kun kaksi asemaa kuuluu samassa suotimessa eri sävelkorkeudella, ne erottuvat omille riveilleen eri värillä ja vesiputouksen oikeassa laidassa näkyy kaksi kolmiota |
+| 22 | RST-ehdotus (0.5.0) | Vahvalla asemalla ehdotus on 579–599 ja kohinaan hukkuvalla 339–449. *RST s* -kenttä täyttyy ehdotuksella, ja kun lähetät itse `UR RST 599`, kenttään jää 599 |
 
 Ongelmatilanteissa ohjelman loki on `%APPDATA%\CWStation\cwstation.log`.
 
-## Tiedossa olevat rajoitukset (0.3.0)
+## Tiedossa olevat rajoitukset (0.5.0)
 
-- **Kaista:** tulkki käsittelee koko 400–1200 Hz:n kaistan. Useampi signaali samassa kaistassa sotkee tulkinnan, joten käytä kapeaa CW-suodinta. Signaalin valinta (FR-RX-07) tulee myöhemmin.
+- **Kaista:** tulkki käsittelee koko 400–1200 Hz:n kaistan. Useampi signaali samassa kaistassa sotkee tulkinnan, joten käytä kapeaa CW-suodinta. Ohjelma erottaa asemat toisistaan sävelkorkeuden perusteella (0.4.0), mutta ei vielä suodata pois muita kuin valittua signaalia (FR-RX-07), eikä erottelu toimi, jos asemat lähettävät yhtä aikaa tai lähes samalla taajuudella (alle 30 Hz ero).
 - **Oma sivuääni:** oma sivuääni näkyy `ref`-rivinä. Ohjelma ei vielä vertaa sitä lähetettyyn tekstiin eikä varoita eroista (UC13, P2). Jos radio ei vie sivuääntä kuulokelähtöön, ref-riviä ei tule.
 - **Taajuus:** ohjelma ei lue taajuutta radiosta (CAT puuttuu), vaan taajuus kirjoitetaan työkalurivin kenttään käsin. Bändi päätellään siitä.
 - **Kenttien poiminta:** poiminta perustuu tavallisiin CW-lyhenteisiin (`RST`, `UR`, `NAME`, `OP`, `QTH`). Tulkintavirhe tai poikkeava sanajärjestys jää huomaamatta, joten tarkista kentät ennen tallennusta.
+- **Nopeusarvio:** lasketaan tulkituista merkeistä, joten se vaatii vähintään viisi merkkiä ja olettaa tasaisen konelähetyksen. Käsiavaimella nopeus heittelee, ja alle 15 WPM:n lähetyksissä arvio on muutaman prosentin matala.
+- **Δ Hz:** vaatii, että radion sivuääni kuuluu äänikortille. Ilman sitä ohjelma ei tiedä omaa lähetystaajuuttaan eikä näytä eroa.
+- **RST-ehdotus:** perustuu vastaanotetun äänen signaali-kohinasuhteeseen, ei radion S-mittariin. Kapea suodin, QSB ja kohinasalpa muuttavat lukemaa, joten pidä sitä lähtökohtana eikä mittaustuloksena. Luettavuus R arvioidaan samasta luvusta, ei tulkinnan virheistä.
 - **Wavelog:** vain QSO:n lähetys. Ohjelma ei lue lokia takaisin eikä tarkista, onko asema jo työskennelty (ei *worked before* -tietoa).
 - **TUNE:** puuttuu (P2). Firmware tukee sitä jo.
 - **Laitteistoinen aikaraja:** keyerin laitteistoinen aikarajapiiri puuttuu vielä. Jumittuneen ESP:n varmistuksena on vain sen oma watchdog.

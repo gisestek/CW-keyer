@@ -4,7 +4,10 @@ Publishes (docs/messages.md):
   rx.status   {state: "running"|"stopped"|"error", source, msg}
   rx.level    {rms_dbfs, peak_dbfs, tone_hz, warning}
   rx.pending  {text}
-  rx.text     {text, t_start, t_end, own_tx, words:[[text, t_start, t_end], ...]}
+  rx.text     {text, t_start, t_end, own_tx, words:[[text, t_start, t_end], ...],
+               wpm, tone_hz, delta_hz, station, snr_db, rst}
+  rx.signal   {wpm, tone_hz, delta_hz, own_tone_hz, station, snr_db, rst}
+              other station's speed, pitch and signal strength
   rx.spectrum {t0, dt, f0, df, cols:[[dB*2 as int, ...], ...]}   waterfall columns, ~10 messages/s
 """
 from __future__ import annotations
@@ -12,12 +15,16 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import numpy as np
 
 from ..core.bus import Bus
 from .audio import AudioSource, LevelMeter
+from .signal_info import (
+    StationTracker, despeckle, median_tone, rst_from_snr, smooth_tones, snr_db, wpm_from_chars,
+)
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +41,10 @@ class RxModule:
         self._stop = threading.Event()
         self._model = None
         self.source: AudioSource | None = None
+        self.stations = StationTracker()
+        # our own sidetone pitch (reference for delta_hz); a median over recent
+        # transmissions, so one misclassified run cannot move the reference
+        self._own_tones: deque[float] = deque(maxlen=9)
 
     def _load_model(self):
         if self._model is None:
@@ -145,28 +156,69 @@ class RxModule:
             if self._stop.is_set():
                 self.bus.publish("rx.status", state="stopped", source=src.name, msg="")
 
+    def own_tone(self) -> float | None:
+        """Pitch of our own sidetone: the median of the last transmissions."""
+        if not self._own_tones:
+            return None
+        return round(float(np.median(list(self._own_tones))), 1)
+
+    def _snr(self, ev, t_origin: float, chars, tone: float | None) -> float | None:
+        """Signal strength of one station's run, measured from the audio it was decoded from."""
+        audio = getattr(ev, "audio", None)
+        if audio is None or not tone or not len(chars) or self._model is None:
+            return None
+        fs = self._model.sample_rate
+        margin = int(0.05 * fs)
+        a = int((chars[0][1] - t_origin - ev.audio_t0) * fs) - margin
+        b = int((chars[-1][2] - t_origin - ev.audio_t0) * fs) + margin
+        a, b = max(0, a), min(len(audio), b)
+        if b - a < fs // 4:
+            return None
+        return snr_db(audio, fs, tone, a, b)
+
     def _publish_final(self, ev, t_origin: float) -> None:
         """Publish decoded text, split into runs of own-sidetone / other-station text.
 
         Classification is per character (by its end time), because the decoder
         can glue our last "K" and the other station's first word into one word
-        when there is no gap between the transmissions.
+        when there is no gap between the transmissions. Characters are also
+        grouped by pitch, so two stations in the same filter end up on separate
+        lines (FR-RX-08).
         """
-        chars = [(c, t_origin + a, t_origin + b) for c, a, b in ev.chars]
+        tones = list(ev.char_tones) + [None] * max(0, len(ev.chars) - len(ev.char_tones))
+        tones = smooth_tones(tones[:len(ev.chars)])
+        chars = [(c, t_origin + a, t_origin + b, tone)
+                 for (c, a, b), tone in zip(ev.chars, tones)]
         if not chars:
-            chars = [(ev.text, t_origin + ev.audio_start_s, t_origin + ev.audio_end_s)]
-        runs: list[tuple[bool, list]] = []
+            chars = [(ev.text, t_origin + ev.audio_start_s, t_origin + ev.audio_end_s, None)]
+
+        # own sidetone / other station per character, then the station for the others
+        owns, idx = [], []
         own = False
-        for c in chars:
+        for i, c in enumerate(chars):
             if c[0] != " ":
                 own = bool(self.tx_windows and self.tx_windows.is_own(c[2]))
-            if runs and runs[-1][0] == own:
-                runs[-1][1].append(c)
+                if not own:
+                    idx.append(i)
+            owns.append(own)
+        assigned = despeckle([self.stations.assign(chars[i][3], chars[i][2]) if chars[i][3] else None
+                              for i in idx])
+        stations = [-1] * len(chars)
+        for i, st in zip(idx, assigned):
+            stations[i] = st
+
+        runs: list[tuple[bool, int, list]] = []
+        own, station = False, 0
+        for c, own_c, st in zip(chars, owns, stations):
+            if c[0] != " ":
+                own, station = own_c, st
+            if runs and runs[-1][0] == own and runs[-1][1] == station:
+                runs[-1][2].append(c)
             elif c[0] != " ":
-                runs.append((own, [c]))
-        for own, cs in runs:
+                runs.append((own, station, [c]))
+        for own, station, cs in runs:
             words, cur, t0 = [], "", 0.0
-            for ch, a, b in cs + [(" ", 0.0, 0.0)]:
+            for ch, a, b, _tone in cs + [(" ", 0.0, 0.0, None)]:
                 if ch == " ":
                     if cur:
                         words.append([cur, round(t0, 3), round(t1, 3)])
@@ -175,6 +227,20 @@ class RxModule:
                 if not cur:
                     t0 = a
                 cur, t1 = cur + ch, b
-            if words:
-                self.bus.publish("rx.text", text=" ".join(w[0] for w in words), t_start=words[0][1],
-                                 t_end=words[-1][2], own_tx=own, words=words)
+            if not words:
+                continue
+            tone = median_tone(c[3] for c in cs)
+            wpm = wpm_from_chars([(c[0], c[1], c[2]) for c in cs])
+            snr = self._snr(ev, t_origin, cs, tone) if not own else None
+            rst = rst_from_snr(snr)
+            if own and tone:
+                self._own_tones.append(tone)
+            own_tone = self.own_tone()
+            delta = round(tone - own_tone, 1) if tone and own_tone and not own else None
+            self.bus.publish("rx.text", text=" ".join(w[0] for w in words), t_start=words[0][1],
+                             t_end=words[-1][2], own_tx=own, words=words,
+                             wpm=wpm, tone_hz=tone, delta_hz=delta, station=station,
+                             snr_db=snr, rst=rst)
+            if not own and (wpm or tone):
+                self.bus.publish("rx.signal", wpm=wpm, tone_hz=tone, delta_hz=delta,
+                                 own_tone_hz=own_tone, station=station, snr_db=snr, rst=rst)

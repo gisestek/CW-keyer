@@ -11,7 +11,8 @@ Jokaisessa viestissä on kentät `type` ja `utc` (ISO 8601, esim. `2026-09-17T12
 | `rx.status` | `state` (`running`/`stopped`/`error`), `source`, `msg` | äänilähde käynnistyy, pysähtyy tai vikaantuu; `msg` = `model_missing:<polku>` jos malli puuttuu |
 | `rx.level` | `rms_dbfs`, `peak_dbfs`, `tone_hz`, `warning` (`""`/`clip`/`weak`/`tone`) | noin 4 kertaa sekunnissa (FR-RX-04) |
 | `rx.pending` | `text` | esikatselu muuttui (voi vielä muuttua) |
-| `rx.text` | `text`, `t_start`, `t_end`, `own_tx`, `words` (`[[sana, alku, loppu], …]`) | vahvistettu tulkinta (FR-RX-03). `own_tx: true` = oman lähetyksen sivuääni (UC13); omat ja vastaaseman merkit erotellaan merkkikohtaisesti eri viesteiksi |
+| `rx.text` | `text`, `t_start`, `t_end`, `own_tx`, `words` (`[[sana, alku, loppu], …]`), `wpm`, `tone_hz`, `delta_hz`, `station`, `snr_db`, `rst` | vahvistettu tulkinta (FR-RX-03). `own_tx: true` = oman lähetyksen sivuääni (UC13); omat ja vastaaseman merkit erotellaan merkkikohtaisesti eri viesteiksi. 0.4.0: `wpm` = lähetysnopeus (tai `null`, jos merkkejä on liian vähän), `tone_hz` = sävelkorkeus, `delta_hz` = ero omaan sivuääneen, `station` = aseman numero (0 = työskentelyn kohde, `-1` = oma sivuääni). 0.5.0: `snr_db` = signaali-kohinasuhde 500 Hz:n kaistassa ja `rst` = siitä johdettu raporttiehdotus |
+| `rx.signal` | `wpm`, `tone_hz`, `delta_hz`, `own_tone_hz`, `station`, `snr_db`, `rst` | vastaaseman nopeus ja taajuus muuttui (FR-RX-09). Lähetetään vain vastaaseman riveistä, ja vain jos nopeus tai sävelkorkeus saatiin mitattua |
 | `rx.spectrum` | `t0`, `dt`, `f0`, `df`, `cols` (`[[dB×2, …], …]`) | vesiputousnäytön sarakkeet, noin 10 viestiä sekunnissa (15 ms/sarake, 6,25 Hz/bin, 100–1500 Hz) |
 
 ## GUI → TX-moduuli

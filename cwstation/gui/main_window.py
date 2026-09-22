@@ -17,6 +17,7 @@ from ..app import Station
 from ..core.adif import band_for
 from ..core.callsigns import find_callsigns
 from ..core.i18n import tr
+from .colors import station_color
 from .waterfall import WaterfallWidget
 
 RX_COLOR = QColor("#1b1b1b")
@@ -54,6 +55,10 @@ class MainWindow(QMainWindow):
         self._cur_tx: dict | None = None
         self._queued = ""
         self._tx_busy = False
+        self._rx_station = 0                 # station whose text the current RX line holds
+        self._rx_wpm: float | None = None    # last measured speed of the other station
+        self._stations: dict[int, tuple[float, float]] = {}   # index -> (pitch Hz, last heard)
+        self._rx_rst: tuple[str, float] | None = None          # suggested report and its SNR
 
         self._build_ui()
         self._build_menu()
@@ -93,6 +98,16 @@ class MainWindow(QMainWindow):
         self.wpm.setMinimumWidth(70)
         self.wpm.valueChanged.connect(lambda _: self._wpm_timer.start())
         top.addWidget(self.wpm)
+        self.match_btn = QPushButton(tr("rx.match"))
+        self.match_btn.setToolTip(tr("rx.match.tip"))
+        self.match_btn.setEnabled(False)
+        self.match_btn.clicked.connect(self._match_speed)
+        top.addWidget(self.match_btn)
+        self.rx_info = QLabel("")
+        self.rx_info.setMinimumWidth(230)
+        self.rx_info.setToolTip(tr("rx.info.tip"))
+        self.rx_info.setStyleSheet("color:#5a5a5a;")
+        top.addWidget(self.rx_info)
         top.addSpacing(16)
         top.addWidget(QLabel(tr("wf.label")))
         self.wf_seconds = QComboBox()
@@ -409,19 +424,52 @@ class MainWindow(QMainWindow):
                                                              text, REF_COLOR)
                     self._scroll_if(was)
                     return
+        station = int(m.get("station") or 0)
+        color = QColor(station_color(station))
         pause = float(self.settings.get("log.line_pause_s", 3.0))
-        rx_open = self._rx_block is not None and self._rx_block.isValid() and (
+        rx_open = self._rx_block is not None and self._rx_block.isValid() and station == self._rx_station and (
             (self._last_kind == "RX" and self._is_last_block(self._rx_block))
             # heard before our TX started but decoded after: keep it on the RX line above the TX line
             or (self._cur_tx is not None and t1 <= self._cur_tx["start"] + 0.5)
         )
         if rx_open and t0 - self._rx_last_t <= pause:
-            self._append_to_block(self._rx_block, " " + text, RX_COLOR, rx=True)
+            self._append_to_block(self._rx_block, " " + text, color, rx=True)
         else:
-            self._rx_block = self._new_line_at_end(self._stamp(t0, "RX"), text, RX_COLOR, rx=True)
+            self._rx_block = self._new_line_at_end(self._stamp(t0, "RX"), text, color, rx=True)
             self._last_kind = "RX"
+        self._rx_station = station
         self._rx_last_t = t1
         self._scroll_if(was)
+
+    def _show_signal(self, m: dict) -> None:
+        """Other station's speed and pitch (FR-RX-09): toolbar text and waterfall markers."""
+        wpm, tone, delta = m.get("wpm"), m.get("tone_hz"), m.get("delta_hz")
+        snr, rst = m.get("snr_db"), m.get("rst")
+        if tone:
+            self._stations[int(m.get("station", 0))] = (tone, time.time())
+            self.waterfall.set_stations([(hz, idx, t) for idx, (hz, t) in self._stations.items()])
+        if wpm:
+            self._rx_wpm = wpm
+            self.match_btn.setEnabled(abs(round(wpm) - self.wpm.value()) >= 1)
+        parts = []
+        if self._rx_wpm:
+            parts.append(tr("rx.speed", wpm=round(self._rx_wpm)))
+        if delta is not None and abs(delta) >= 10:
+            parts.append(tr("rx.offset", delta=f"{delta:+.0f}"))
+        if rst and snr is not None and int(m.get("station") or 0) == 0:
+            self._rx_rst = (rst, snr)
+        if getattr(self, "_rx_rst", None):
+            parts.append(tr("rx.report", rst=self._rx_rst[0], snr=f"{self._rx_rst[1]:+.0f}"))
+        self.rx_info.setText("  ".join(parts))
+
+    def _match_speed(self) -> None:
+        """Set our sending speed to the other station's speed."""
+        if not self._rx_wpm:
+            return
+        wpm = max(self.wpm.minimum(), min(self.wpm.maximum(), int(round(self._rx_wpm))))
+        self.wpm.setValue(wpm)          # valueChanged sends tx.set
+        self.match_btn.setEnabled(False)
+        self._note(tr("rx.matched", wpm=wpm))
 
     def _note(self, text: str) -> None:
         was = self._near_bottom()
@@ -440,6 +488,8 @@ class MainWindow(QMainWindow):
             self.waterfall.add_spectrum(m)
         elif t == "rx.text":
             self._show_rx(m)
+        elif t == "rx.signal":
+            self._show_signal(m)
         elif t == "rx.pending":
             self.pending.setText(m.get("text", "")[-160:])
         elif t == "rx.level":

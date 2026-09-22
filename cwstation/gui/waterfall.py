@@ -11,14 +11,18 @@ import time
 from collections import deque
 
 import numpy as np
-from PySide6.QtCore import QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QImage, QPainter, QPen
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
+
+from .colors import station_color, station_marker_color
 
 DECODE_MIN_HZ = 400
 DECODE_MAX_HZ = 1200
 RANGE_DB = 45.0
 MAX_SECONDS = 30
+STATION_MARK_S = 90.0     # a station marker fades away after this long without a signal
+MARK_W = 11               # size of the station triangle on the right edge
 
 
 def build_lut() -> np.ndarray:
@@ -46,12 +50,13 @@ class WaterfallWidget(QWidget):
         self._floor = -90.0
         self._tone_hz: int | None = None
         self._tone_t = 0.0
+        self._stations: list[tuple[float, int, float]] = []   # (hz, station index, last heard)
         self._image: QImage | None = None
         self._dirty = False
         self._timer = QTimer(self, interval=66)
         self._timer.timeout.connect(self._refresh)
         self._timer.start()
-        self.setToolTip("Waterfall: 100–1500 Hz. Dashed lines = decoder band 400–1200 Hz. Red bar = your transmission.")
+        self.setToolTip("Waterfall: 100–1500 Hz. Dashed lines = decoder band 400–1200 Hz. Red bar = your transmission. Triangle on the right = the pitch a station is decoded from, in that station's text colour.")
 
     # -- data --
     def add_spectrum(self, m: dict) -> None:
@@ -75,6 +80,10 @@ class WaterfallWidget(QWidget):
 
     def set_tone(self, hz: int | None) -> None:
         self._tone_hz, self._tone_t = hz, time.time()
+
+    def set_stations(self, stations) -> None:
+        """Decoded stations as (pitch_hz, station index, last heard time)."""
+        self._stations = list(stations)
 
     def set_seconds(self, seconds: int) -> None:
         self.seconds = seconds
@@ -162,9 +171,30 @@ class WaterfallWidget(QWidget):
             label = dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%H:%M:%S")
             p.drawText(QRectF(x - 30, plot.bottom() + 1, 60, 13), Qt.AlignCenter, label)
 
-        # strongest tone marker
+        # live strongest tone: a short white tick on the left edge
         if self._tone_hz and time.time() - self._tone_t < 2 and 100 <= self._tone_hz <= 1500:
             y = self._y_for_hz(self._tone_hz, plot, bins)
-            p.setPen(QPen(QColor(255, 255, 255), 2))
-            p.drawLine(int(plot.right() - 8), int(y), int(plot.right()), int(y))
+            p.setPen(QPen(QColor(255, 255, 255, 200), 2))
+            p.drawLine(int(plot.left()), int(y), int(plot.left() + 7), int(y))
+
+        # decoded stations: on the right edge, a triangle in the same colour as
+        # that station's text, at the pitch its characters are decoded from
+        now_s = time.time()
+        for hz, index, heard in self._stations:
+            if not hz or now_s - heard > STATION_MARK_S:
+                continue
+            y = self._y_for_hz(hz, plot, bins)
+            fill = QColor(station_color(index))
+            faint = QColor(station_marker_color(index))
+            faint.setAlpha(70)
+            right = plot.right() - 2
+            p.setPen(QPen(faint, 1, Qt.DotLine))
+            p.drawLine(int(plot.left() + 8), int(y), int(right - MARK_W), int(y))
+            tri = QPolygonF([QPointF(right, y - MARK_W / 2),
+                             QPointF(right, y + MARK_W / 2),
+                             QPointF(right - MARK_W, y)])
+            p.setPen(QPen(QColor(255, 255, 255, 235), 1))
+            p.setBrush(fill)
+            p.drawPolygon(tri)
+            p.setBrush(Qt.NoBrush)
         p.end()

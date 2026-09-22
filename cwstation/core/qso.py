@@ -42,6 +42,7 @@ class QsoSession:
         self.auto: dict[str, str] = {}
         self.rx_text = ""
         self.tx_text = ""
+        self.rst_hint = ""        # report suggested from the measured signal strength (FR-CORE-07)
         self.t_first: float | None = None
         self.t_last: float | None = None
         bus.subscribe("rx.text", self._on_rx)
@@ -55,6 +56,8 @@ class QsoSession:
         if not text:
             return
         with self._lock:
+            if msg.get("rst") and int(msg.get("station") or 0) == 0:
+                self.rst_hint = str(msg["rst"])
             self.rx_text = " ".join((self.rx_text + " " + text).split())[-600:]
             t = msg.get("t_start") or self._clock()
             self.t_first = self.t_first or t
@@ -90,7 +93,7 @@ class QsoSession:
         if m:
             auto["gridsquare"] = m.group(0)
         m = RST_RE.search(self.tx_text) or RST_ANY_RE.search(self.tx_text)
-        auto["rst_sent"] = _rst(m.group(1)) if m else "599"
+        auto["rst_sent"] = _rst(m.group(1)) if m else (self.rst_hint or "599")
         if auto != self.auto:
             self.auto = auto
             self.bus.publish("qso.update", fields=self.fields())
@@ -111,6 +114,7 @@ class QsoSession:
         with self._lock:
             self.manual, self.auto = {}, {}
             self.rx_text = self.tx_text = ""
+            self.rst_hint = ""
             self.t_first = self.t_last = None
         self.bus.publish("qso.update", fields=self.fields())
 

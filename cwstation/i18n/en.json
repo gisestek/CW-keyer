@@ -105,5 +105,12 @@
   "settings.cq.interval": "CQ repeat interval (s)",
   "settings.macros.key": "Key",
   "settings.macros.label": "Button",
-  "settings.macros.text": "Text"
+  "settings.macros.text": "Text",
+  "rx.match": "Match",
+  "rx.match.tip": "Set my sending speed to the other station's speed",
+  "rx.speed": "RX {wpm} WPM",
+  "rx.offset": "{delta} Hz",
+  "rx.info.tip": "Speed, pitch and strength of the station being decoded. The pitch is the difference to your own sidetone, so 0 Hz means you are on the same frequency. The report is a suggestion from the measured signal-to-noise ratio in a 500 Hz bandwidth; check it before logging.",
+  "rx.matched": "Sending speed set to {wpm} WPM",
+  "rx.report": "{rst} ({snr} dB)"
 }
