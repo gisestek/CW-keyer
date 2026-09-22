@@ -1,6 +1,6 @@
 # CW Station – ohjelman käyttöohje
 
-Versio 0.5.0 · 2026-09-22 · AGPL-3.0-or-later
+Versio 0.6.0 · 2026-09-22 · AGPL-3.0-or-later
 
 Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [DeepCW](https://github.com/e04/deepcw-engine) tulkitsee vastaanotetun äänen tekstiksi, ja samasta ikkunasta kirjoitettu teksti lähtee radioon WiFi-keyerin kautta. Vaatimukset: `CW-asema – vaatimusmäärittely.md`.
 
@@ -18,6 +18,16 @@ Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [Dee
 | `packaging/` | Windows-paketointi (PyInstaller) |
 | `tests/` | Automaattiset testit |
 | `third_party/deepcw-engine/` | DeepCW-malli (AGPL-3.0) |
+
+## Uutta versiossa 0.6.0
+
+**Tuki WinKeyer-laitteille.** Ohjelmaa voi nyt kokeilla millä tahansa K1EL WinKeyerillä tai sen kanssa yhteensopivalla laitteella (esim. K3NG WinKeyer-emuloinnissa) ilman tämän projektin omaa keyeriä. Asetukset → Keyer → *Keyer*: valitse *WinKeyer (serial)* ja sarjaportti.
+
+- Host mode K1EL:n ohjeen mukaisesti: 1200 bit/s, 8 databittiä, ei pariteettia, 2 stop-bittiä, DTR päällä ja RTS pois. Avaus `00 02`, johon laite vastaa firmware-versiollaan.
+- Merkkikohtainen kaiku otetaan käyttöön mode-rekisteristä (*serial echoback*), joten lähetetty teksti ilmestyy tekstivirtaan punaisena samalla tavalla kuin omalla keyerillä.
+- Nopeus ja painotus menevät laitteelle lennossa, STOP tyhjentää puskurin (`0A`) ja katkaisee kesken olevan merkin, ja ikkunan sulkeminen sulkee host moden siististi.
+- Prosignit (`<SK>`) lähetetään WinKeyerin *merge letters* -komennolla. Kaiussa ne näkyvät kahtena kirjaimena, koska laite kaiuttaa merkit erikseen.
+- **Turvallisuusero, joka kannattaa tietää:** WinKeyerissä ei ole heartbeatia. Jos ohjelma kaatuu tai USB irtoaa, laite lähettää puskurinsa (128 merkkiä, 20 WPM:llä noin minuutti) loppuun. Ohjelma tyhjentää puskurin STOPissa, sulkemisessa ja portin kadotessa, mutta oman kaatumisensa varalta se ei voi tehdä mitään. Vaatimus SR-04 ei siis täyty WinKeyerillä, vaan sen tilalla on operaattorin valppaus tai laitteistoinen aikarajapiiri. Oma WiFi-keyer pysäyttää lähetyksen 3 sekunnissa myös tässä tilanteessa. Asetusikkuna muistuttaa tästä, ja aikarajakentät näkyvät harmaina, koska ne koskevat vain omaa keyeriä.
 
 ## Uutta versiossa 0.5.0
 
@@ -82,6 +92,7 @@ DeepCW:n tulkinnasta ja äänestä irtoaa enemmän tietoa kuin pelkkä teksti. V
 | FR-RX-08 asemien erottelu (0.4.0) | Merkkikohtainen sävelkorkeus: eri asemat eri riveille ja väreille, merkinnät vesiputoukseen |
 | FR-RX-09 nopeus ja taajuusero (0.4.0) | Vastaaseman WPM, *Match*-painike ja Δ Hz omaan sivuääneen |
 | FR-CORE-07 RST-ehdotus (0.5.0) | SNR 500 Hz:n kaistassa → raporttiehdotus työkaluriville ja QSO-kenttään |
+| FR-TX-08 WinKeyer-tuki (0.6.0) | Sarjaportin host mode, kaiku, nopeus, STOP; valinta asetuksista |
 | SR-01 STOP | Aina näkyvä STOP-painike ja Esc mistä tahansa; keyer nostaa avaimen alle 3 ms:ssa |
 | SR-02, SR-03 aikarajat | Keyer: avain alhaalla enintään 10,5 s, lähetys enintään 120 s ilman uutta tekstiä. Asetuksissa voi laskea |
 | SR-04 yhteyskatkos tai kaatuminen | Keyer pysähtyy 3 s:ssa, jos ohjelmasta ei kuulu mitään, ja heti, jos yhteys katkeaa |
@@ -91,7 +102,7 @@ DeepCW:n tulkinnasta ja äänestä irtoaa enemmän tietoa kuin pelkkä teksti. V
 | Vesiputous (0.2.0) | 100–1500 Hz, tulkin kaista ja omat lähetykset merkittyinä |
 | UC13 oman lähetyksen viite (0.2.0) | `ref`-rivi TX-rivin alla näytöllä ja `REF`-rivi lokissa. Automaattinen vertailu ja varoitus puuttuvat vielä |
 
-Automaattiset testit (`tests/`, 69 kpl) kattavat mm. STOP-painikkeen, Escin syöttörivillä, F1-makron, ikkunan sulkemisen kesken lähetyksen, yhteyskatkoksen, tekstilokin rivityksen, RX-tulkinnan WAV-tiedostosta, ref-rivin sijoittelun, omien ja vastaaseman merkkien erottelun, vesiputousdatan sekä 0.3.0:n osalta ADIF-muotoilun ja bänditaulukon, tunnusten tunnistuksen, kenttien poiminnan tekstistä, CQ-toiston ja Wavelog-lähetyksen (paikallinen testipalvelin, myös virhetilanne ja jono). Versiossa 0.4.0 mukaan tulivat nopeusarvion tarkkuus, sävelkorkeuden mittaus, kohinan hylkääminen sekä kahden aseman erottelu samasta äänitiedostosta, ja 0.5.0:ssa SNR-mittauksen tarkkuus tunnetulla signaalilla, RST-taulukko ja raporttiehdotuksen päätyminen QSO-kenttään.
+Automaattiset testit (`tests/`, 78 kpl) kattavat mm. STOP-painikkeen, Escin syöttörivillä, F1-makron, ikkunan sulkemisen kesken lähetyksen, yhteyskatkoksen, tekstilokin rivityksen, RX-tulkinnan WAV-tiedostosta, ref-rivin sijoittelun, omien ja vastaaseman merkkien erottelun, vesiputousdatan sekä 0.3.0:n osalta ADIF-muotoilun ja bänditaulukon, tunnusten tunnistuksen, kenttien poiminnan tekstistä, CQ-toiston ja Wavelog-lähetyksen (paikallinen testipalvelin, myös virhetilanne ja jono). Versiossa 0.4.0 mukaan tulivat nopeusarvion tarkkuus, sävelkorkeuden mittaus, kohinan hylkääminen sekä kahden aseman erottelu samasta äänitiedostosta, 0.5.0:ssa SNR-mittauksen tarkkuus tunnetulla signaalilla, RST-taulukko ja raporttiehdotuksen päätyminen QSO-kenttään, ja 0.6.0:ssa WinKeyer-protokolla kokonaisuudessaan protokollasimulaattoria vastaan (host moden avaus, kaiku, prosignit, STOP, nopeus, portin katoaminen).
 
 ## Rakentaminen (kehityskone, Windows)
 
@@ -107,20 +118,20 @@ Skripti tekee seuraavat, 5–15 min:
 2. Ajaa testit.
 3. Rakentaa ohjelman PyInstallerilla.
 4. Ajaa valmiin ohjelman itsetestin: ikkuna näkyy noin 15 s, ja testi tarkistaa, että tulkinta ja lähetys toimivat.
-5. Pakkaa tuloksen tiedostoksi `dist\CWStation-0.5.0-win64.zip`.
+5. Pakkaa tuloksen tiedostoksi `dist\CWStation-0.6.0-win64.zip`.
 
 Vaihtoehto: GitHub Actions rakentaa saman zipin. Siirrä `packaging/github-build-windows.yml` polkuun `.github/workflows/build-windows.yml` ja pushaa GitHubiin; rakennus käynnistyy Actions-välilehdeltä (*Run workflow*) tai `v*`-tagista.
 
 ## Asennus radiokoneelle
 
-1. Kopioi `CWStation-0.5.0-win64.zip` radiokoneelle ja pura se esimerkiksi kansioon `C:\CWStation`. Pythonia ei tarvita.
+1. Kopioi `CWStation-0.6.0-win64.zip` radiokoneelle ja pura se esimerkiksi kansioon `C:\CWStation`. Pythonia ei tarvita.
 2. Käynnistä `CWStation\CWStation.exe`.
    - Windows SmartScreen voi varoittaa allekirjoittamattomasta ohjelmasta: *Lisätietoja → Suorita silti*.
    - Windowsin palomuuri voi kysyä verkkolupaa. Salli yksityiset verkot, jotta yhteys keyeriin toimii.
 3. Avaa **CW Station → Settings…**:
    - **Station:** oma tunnus (tarvitaan makroihin), nimi, QTH, lokaattori.
    - **Audio:** DigiRigin äänitulo, yleensä *USB PnP Sound Device (MME)*. Jos taso tai ääni ei toimi, kokeile saman laitteen *Windows WASAPI*- tai *DirectSound*-versiota.
-   - **Keyer:** osoite `ws://cwkeyer.local:81/`. Jos nimi ei löydy, käytä keyerin IP-osoitetta, esim. `ws://192.168.1.50:81/`.
+   - **Keyer:** valitse *WiFi keyer (this project)* ja osoite `ws://cwkeyer.local:81/`. Jos nimi ei löydy, käytä keyerin IP-osoitetta, esim. `ws://192.168.1.50:81/`. WinKeyer-laitteella valitse *WinKeyer (serial)* ja laitteen sarjaportti (esim. `COM5`).
    - **QSO (0.3.0):** ADIF-tiedoston polku (tyhjä = `Documents\CWStation\logs\cwstation.adi`), teho watteina ja CQ-toiston väli.
    - **Wavelog (0.3.0):** rasti *Enabled*, palvelimen osoite ilman `/api`-osaa (esim. `https://wavelog.example.com`), API-avain ja `station_profile_id` (Wavelogissa *Station Locations* -sivulla). Paina *Test connection*: se lähettää yhden testi-QSO:n tunnuksella `TEST`. Poista testitietue Wavelogista jälkeenpäin.
 4. Keyerin tilan pitää muuttua vihreäksi (*Keyer: connected*), ja tilarivillä pitää näkyä äänitaso.
@@ -153,10 +164,14 @@ Tee testit järjestyksessä. Radio tekokuormaan pienellä teholla, kunnes kohdat
 | 20 | Δ Hz (0.4.0) | Viritä VFO:ta 50 Hz sivuun: lukema muuttuu saman verran. Nollalyönnissä lukema katoaa (alle 10 Hz) |
 | 21 | Kaksi asemaa (0.4.0) | Kun kaksi asemaa kuuluu samassa suotimessa eri sävelkorkeudella, ne erottuvat omille riveilleen eri värillä ja vesiputouksen oikeassa laidassa näkyy kaksi kolmiota |
 | 22 | RST-ehdotus (0.5.0) | Vahvalla asemalla ehdotus on 579–599 ja kohinaan hukkuvalla 339–449. *RST s* -kenttä täyttyy ehdotuksella, ja kun lähetät itse `UR RST 599`, kenttään jää 599 |
+| 23 | WinKeyer: yhteys (0.6.0) | Asetuksista *WinKeyer (serial)* ja portti. Tilapalkki muuttuu vihreäksi ja näyttää laitteen firmware-version |
+| 24 | WinKeyer: lähetys (0.6.0) | `TEST` + Enter: teksti ilmestyy punaisena merkki kerrallaan sitä mukaa kuin laite lähettää, ja radio avainnetaan |
+| 25 | WinKeyer: STOP (0.6.0) | Pitkä teksti, sitten STOP: lähetys katkeaa kesken merkin, eikä loppua lähetetä |
+| 26 | WinKeyer: sulkeminen (0.6.0) | Pitkä teksti ja ikkuna kiinni: lähetys katkeaa heti. Sen jälkeen laite toimii taas omana keyerinään (host mode suljettu) |
 
 Ongelmatilanteissa ohjelman loki on `%APPDATA%\CWStation\cwstation.log`.
 
-## Tiedossa olevat rajoitukset (0.5.0)
+## Tiedossa olevat rajoitukset (0.6.0)
 
 - **Kaista:** tulkki käsittelee koko 400–1200 Hz:n kaistan. Useampi signaali samassa kaistassa sotkee tulkinnan, joten käytä kapeaa CW-suodinta. Ohjelma erottaa asemat toisistaan sävelkorkeuden perusteella (0.4.0), mutta ei vielä suodata pois muita kuin valittua signaalia (FR-RX-07), eikä erottelu toimi, jos asemat lähettävät yhtä aikaa tai lähes samalla taajuudella (alle 30 Hz ero).
 - **Oma sivuääni:** oma sivuääni näkyy `ref`-rivinä. Ohjelma ei vielä vertaa sitä lähetettyyn tekstiin eikä varoita eroista (UC13, P2). Jos radio ei vie sivuääntä kuulokelähtöön, ref-riviä ei tule.
@@ -164,6 +179,7 @@ Ongelmatilanteissa ohjelman loki on `%APPDATA%\CWStation\cwstation.log`.
 - **Kenttien poiminta:** poiminta perustuu tavallisiin CW-lyhenteisiin (`RST`, `UR`, `NAME`, `OP`, `QTH`). Tulkintavirhe tai poikkeava sanajärjestys jää huomaamatta, joten tarkista kentät ennen tallennusta.
 - **Nopeusarvio:** lasketaan tulkituista merkeistä, joten se vaatii vähintään viisi merkkiä ja olettaa tasaisen konelähetyksen. Käsiavaimella nopeus heittelee, ja alle 15 WPM:n lähetyksissä arvio on muutaman prosentin matala.
 - **Δ Hz:** vaatii, että radion sivuääni kuuluu äänikortille. Ilman sitä ohjelma ei tiedä omaa lähetystaajuuttaan eikä näytä eroa.
+- **WinKeyer:** ei heartbeatia (ks. yllä), eivätkä ohjelman aikarajat (SR-02, SR-03) päde. Laitetta ei ole testattu oikealla raudalla, vain protokollasimulaattorilla; ensimmäisen kokeilijan kannattaa käydä läpi käyttöönottotestin kohdat 23–26. Melalla lähettäminen kesken ohjelman lähetyksen (paddle break-in) tyhjentää laitteen puskurin, mistä ohjelma kertoo vain lokissa.
 - **RST-ehdotus:** perustuu vastaanotetun äänen signaali-kohinasuhteeseen, ei radion S-mittariin. Kapea suodin, QSB ja kohinasalpa muuttavat lukemaa, joten pidä sitä lähtökohtana eikä mittaustuloksena. Luettavuus R arvioidaan samasta luvusta, ei tulkinnan virheistä.
 - **Wavelog:** vain QSO:n lähetys. Ohjelma ei lue lokia takaisin eikä tarkista, onko asema jo työskennelty (ei *worked before* -tietoa).
 - **TUNE:** puuttuu (P2). Firmware tukee sitä jo.

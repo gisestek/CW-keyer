@@ -2,6 +2,6 @@
 
 License: AGPL-3.0-or-later (uses the DeepCW model, AGPL-3.0-only).
 """
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 APP_NAME = "CW Station"
 APP_ID = "CWStation"

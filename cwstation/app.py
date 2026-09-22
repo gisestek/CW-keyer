@@ -36,17 +36,15 @@ class Station:
         self.wav = wav
         self.sim_keyer = sim_keyer
         self._sim = None
+        self._sim_url = ""
         self._ticker_stop = threading.Event()
 
         if sim_keyer:
             from .tx import keyer_sim
 
             self._sim = keyer_sim.start_in_thread()
-            url = f"ws://127.0.0.1:{self._sim['port']}/"
-        else:
-            url = settings.get("keyer.url")
-        initial = {k: settings.get(f"keyer.{k}") for k in KEYER_SET_KEYS}
-        self.keyer = KeyerClient(self.bus, url, initial_set=initial, simulated=sim_keyer)
+            self._sim_url = f"ws://127.0.0.1:{self._sim['port']}/"
+        self.keyer = self._make_keyer()
         self.qso = QsoSession(self.bus, settings)
         self.tx = TxModule(self.bus, settings, self.keyer, qso=self.qso)
         self.tx_windows = TxWindows(self.bus)
@@ -55,6 +53,33 @@ class Station:
         self.textlog = TextLog(self.bus, settings.log_folder(), float(settings.get("log.line_pause_s", 3.0)))
         self.rx = RxModule(self.bus, model_dir(), self._make_source, tx_windows=self.tx_windows)
         self._shutdown_done = False
+
+    def keyer_type(self) -> str:
+        """`wifi` = own WebSocket keyer, `winkeyer` = serial WinKeyer (FR-TX-08)."""
+        if self.sim_keyer:
+            return "wifi"
+        return "winkeyer" if self.settings.get("keyer.type") == "winkeyer" else "wifi"
+
+    def _make_keyer(self):
+        initial = {k: self.settings.get(f"keyer.{k}") for k in KEYER_SET_KEYS}
+        if self.keyer_type() == "winkeyer":
+            from .tx.winkeyer_client import WinkeyerClient
+
+            return WinkeyerClient(self.bus, self.settings.get("keyer.serial_port", ""),
+                                  initial_set=initial)
+        url = self._sim_url if self.sim_keyer else self.settings.get("keyer.url")
+        return KeyerClient(self.bus, url, initial_set=initial, simulated=self.sim_keyer)
+
+    def _swap_keyer(self) -> None:
+        """Keyer type changed in the settings: close the old one and start the new one."""
+        old = self.keyer
+        try:
+            old.shutdown()
+        except Exception:  # noqa: BLE001
+            log.exception("closing the old keyer failed")
+        self.keyer = self._make_keyer()
+        self.tx.client = self.keyer
+        self.keyer.start()
 
     def _make_source(self):
         if self.sim_keyer and self._sim:
@@ -99,7 +124,13 @@ class Station:
         s = self.settings
         if old.get("audio") != s.get("audio") and not self.wav:
             self.rx.restart()
-        if not self.sim_keyer and old.get("keyer", {}).get("url") != s.get("keyer.url"):
+        okeyer = old.get("keyer", {})
+        if not self.sim_keyer and okeyer.get("type", "wifi") != s.get("keyer.type", "wifi"):
+            self._swap_keyer()
+        elif not self.sim_keyer and self.keyer_type() == "winkeyer":
+            if okeyer.get("serial_port") != s.get("keyer.serial_port"):
+                self.keyer.set_url(s.get("keyer.serial_port", ""))
+        elif not self.sim_keyer and okeyer.get("url") != s.get("keyer.url"):
             self.keyer.set_url(s.get("keyer.url"))
         new_set = {k: s.get(f"keyer.{k}") for k in KEYER_SET_KEYS}
         old_set = {k: old.get("keyer", {}).get(k) for k in KEYER_SET_KEYS}

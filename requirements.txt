@@ -5,3 +5,4 @@ soxr>=0.3
 sounddevice>=0.4.6
 soundfile>=0.12
 websockets>=13
+pyserial>=3.5

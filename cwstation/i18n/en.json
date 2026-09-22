@@ -112,5 +112,10 @@
   "rx.offset": "{delta} Hz",
   "rx.info.tip": "Speed, pitch and strength of the station being decoded. The pitch is the difference to your own sidetone, so 0 Hz means you are on the same frequency. The report is a suggestion from the measured signal-to-noise ratio in a 500 Hz bandwidth; check it before logging.",
   "rx.matched": "Sending speed set to {wpm} WPM",
-  "rx.report": "{rst} ({snr} dB)"
+  "rx.report": "{rst} ({snr} dB)",
+  "settings.keyer.type": "Keyer",
+  "settings.keyer.type.wifi": "WiFi keyer (this project)",
+  "settings.keyer.type.winkeyer": "WinKeyer (serial)",
+  "settings.keyer.port": "Serial port",
+  "settings.keyer.winkeyer_note": "K1EL WinKeyer or a compatible keyer (for example K3NG) at 1200 baud. Note: WinKeyer has no heartbeat, so if this program crashes the keyer sends the rest of its buffer (up to about a minute at 20 WPM). STOP, closing the window and losing the port all clear the buffer."
 }

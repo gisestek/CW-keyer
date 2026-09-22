@@ -33,9 +33,9 @@ Jokaisessa viestissä on kentät `type` ja `utc` (ISO 8601, esim. `2026-09-17T12
 | `tx.state` | `busy`, `key`, `pending` | lähetys alkoi tai päättyi |
 | `tx.stopped` | `reason` | jono tyhjennettiin (STOP, vika, yhteyskatkos) |
 | `tx.fault` | `code` (`KEYDOWN_LIMIT`/`TX_LIMIT`/`HEARTBEAT_LOST`) | keyerin turvaraja laukesi (SR-02…SR-04) |
-| `keyer.status` | `state` (`connecting`/`connected`/`disconnected`), `url`, `host`, `fw`, `version`, `simulated` | yhteyden tila |
+| `keyer.status` | `state` (`connecting`/`connected`/`disconnected`), `url`, `host`, `fw`, `version`, `simulated` | yhteyden tila. WinKeyer-laitteella (0.6.0) `fw` on `winkeyer`, `version` laitteen firmware-numero ja `url` sarjaportti |
 | `keyer.config` | `cfg` | keyerin asetukset muuttuivat |
-| `keyer.error` | `code`, `msg` | keyer vastasi virheellä tai toinen ohjelma otti ohjauksen (`CONTROL_LOST`) |
+| `keyer.error` | `code`, `msg` | keyer vastasi virheellä tai toinen ohjelma otti ohjauksen (`CONTROL_LOST`). WinKeyerillä myös `PORT_ERROR` (portti ei aukea), `PORT_LOST` (portti katosi) ja `BREAKIN` (melaa käytettiin kesken lähetyksen, jolloin laite tyhjensi puskurinsa) |
 
 ## QSO ja loki (0.3.0)
 

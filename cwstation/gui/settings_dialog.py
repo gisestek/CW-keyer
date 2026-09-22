@@ -71,8 +71,31 @@ class SettingsDialog(QDialog):
 
         # Keyer
         w = QWidget(); f = QFormLayout(w)
+        self.keyer_type = QComboBox()
+        self.keyer_type.addItem(tr("settings.keyer.type.wifi"), "wifi")
+        self.keyer_type.addItem(tr("settings.keyer.type.winkeyer"), "winkeyer")
+        idx = self.keyer_type.findData(settings.get("keyer.type", "wifi"))
+        self.keyer_type.setCurrentIndex(max(0, idx))
+        self.keyer_type.currentIndexChanged.connect(self._keyer_type_changed)
+        f.addRow(tr("settings.keyer.type"), self.keyer_type)
         self.url = QLineEdit(settings.get("keyer.url", ""))
-        f.addRow(tr("settings.keyer.url"), self.url)
+        self.url_label = QLabel(tr("settings.keyer.url"))
+        f.addRow(self.url_label, self.url)
+        self.serial_port = QComboBox()
+        self.serial_port.setEditable(True)
+        self.serial_port.setMinimumWidth(260)
+        stored_port = settings.get("keyer.serial_port", "")
+        from ..tx.winkeyer_client import list_ports
+
+        for label in list_ports():
+            self.serial_port.addItem(label)
+        self.serial_port.setEditText(stored_port)
+        self.port_label = QLabel(tr("settings.keyer.port"))
+        f.addRow(self.port_label, self.serial_port)
+        self.wk_note = QLabel(tr("settings.keyer.winkeyer_note"))
+        self.wk_note.setWordWrap(True)
+        self.wk_note.setStyleSheet("color:#b9770e;")
+        f.addRow(self.wk_note)
         self.wpm = QSpinBox(minimum=5, maximum=50, value=int(settings.get("keyer.wpm", 20)))
         f.addRow(tr("settings.keyer.wpm"), self.wpm)
         self.weight = QSpinBox(minimum=25, maximum=75, value=int(settings.get("keyer.weight", 50)))
@@ -83,8 +106,11 @@ class SettingsDialog(QDialog):
         self.txmax = QSpinBox(minimum=10000, maximum=120000, singleStep=10000,
                               value=int(settings.get("keyer.tx_max_ms", 120000)))
         f.addRow(tr("settings.keyer.tx"), self.txmax)
-        f.addRow(QLabel(tr("settings.keyer.limits_note")))
+        self.limits_note = QLabel(tr("settings.keyer.limits_note"))
+        self.limits_note.setWordWrap(True)
+        f.addRow(self.limits_note)
         tabs.addTab(w, tr("settings.tab.keyer"))
+        self._keyer_type_changed()
 
         # Log
         w = QWidget(); f = QFormLayout(w)
@@ -162,6 +188,15 @@ class SettingsDialog(QDialog):
         lay.addWidget(tabs)
         lay.addWidget(buttons)
 
+    def _keyer_type_changed(self) -> None:
+        winkey = self.keyer_type.currentData() == "winkeyer"
+        for wdg in (self.url, self.url_label):
+            wdg.setVisible(not winkey)
+        for wdg in (self.serial_port, self.port_label, self.wk_note):
+            wdg.setVisible(winkey)
+        for wdg in (self.keydown, self.txmax, self.limits_note):
+            wdg.setEnabled(not winkey)      # the safety limits live in our own keyer only
+
     def _browse_adif(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, tr("settings.qso.adif"), self.adif_file.text() or "cwstation.adi",
                                               "ADIF (*.adi *.adif)")
@@ -201,7 +236,9 @@ class SettingsDialog(QDialog):
         s.set("audio.device", self.device.currentData() or "")
         s.set("audio.channel", int(self.channel.currentData()))
         s.set("audio.samplerate", int(self.samplerate.currentData()))
+        s.set("keyer.type", self.keyer_type.currentData() or "wifi")
         s.set("keyer.url", self.url.text().strip())
+        s.set("keyer.serial_port", self.serial_port.currentText().strip())
         s.set("keyer.wpm", self.wpm.value())
         s.set("keyer.weight", self.weight.value())
         s.set("keyer.keydown_max_ms", self.keydown.value())

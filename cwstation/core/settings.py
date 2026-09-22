@@ -21,6 +21,8 @@ DEFAULTS: dict = {
     "station": {"callsign": "", "name": "", "qth": "", "locator": ""},
     "audio": {"device": "", "channel": 0, "samplerate": 48000},
     "keyer": {
+        "type": "wifi",              # "wifi" = WebSocket keyer, "winkeyer" = serial WinKeyer
+        "serial_port": "",           # COM port of the WinKeyer, e.g. "COM5" or "/dev/ttyUSB0"
         "url": "ws://cwkeyer.local:81/",
         "wpm": 20,
         "weight": 50,
