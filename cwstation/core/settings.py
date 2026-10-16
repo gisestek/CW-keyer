@@ -29,9 +29,11 @@ DEFAULTS: dict = {
         "keydown_max_ms": 10500,
         "tx_max_ms": 120000,
         "heartbeat_ms": 3000,
+        "tune_s": 5,                 # TUNE length; the WiFi keyer caps it at 10 s (FR-TX-08)
     },
     "log": {"folder": "", "line_pause_s": 3.0},
-    "ui": {"language": "en", "font_size": 13, "window": None, "waterfall_seconds": 12, "splitter": None},
+    "ui": {"language": "en", "font_size": 13, "window": None, "waterfall_seconds": 12, "splitter": None,
+           "call_splitter": None, "call_panel": True},
     "macros": {
         "F1": {"label": "CQ", "text": "CQ CQ CQ DE {MYCALL} {MYCALL} K"},
         "F2": {"label": "MYCALL", "text": "{MYCALL}"},
@@ -40,9 +42,11 @@ DEFAULTS: dict = {
         "F5": {"label": "Report", "text": "{CALL} DE {MYCALL} UR RST {RST} {RST} NAME {MYNAME} {MYNAME} QTH {MYQTH} HW? {CALL} DE {MYCALL} K"},
         "F6": {"label": "QSL", "text": "R R TNX FER QSO DR {NAME} 73 ES CUL {CALL} DE {MYCALL} <SK>"},
     },
-    "qso": {"freq_mhz": 7.03, "tx_pwr": "100", "adif_file": ""},
+    "qso": {"freq_mhz": 7.03, "tx_pwr": "100", "adif_file": "", "worked_adif": ""},
     "cq": {"interval_s": 8, "macro": "F1"},
     "wavelog": {"enabled": False, "url": "", "key": "", "station_profile_id": ""},
+    "qrz": {"username": "", "password": "", "auto": True},
+    "update": {"auto": True, "prerelease": True, "last_check": 0, "skip": ""},
 }
 
 

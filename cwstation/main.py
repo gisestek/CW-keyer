@@ -74,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.selftest:
         return _selftest(app, station, win, args.selftest)
+    # update check (FR-CORE-10): at most once a day, a few seconds after start-up, never blocks the window
+    from PySide6.QtCore import QTimer
+
+    QTimer.singleShot(5000, lambda: station.updater.check_due() and station.updater.check())
     return app.exec()
 
 

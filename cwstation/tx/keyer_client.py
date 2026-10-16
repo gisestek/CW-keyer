@@ -67,6 +67,11 @@ class KeyerClient:
         self._loop.call_soon_threadsafe(self._outq.put_nowait, obj)
         return True
 
+    def tune(self, ms: int) -> bool:
+        """Key down for `ms` (FR-TX-08). The keyer itself caps the time and ends it, so a lost
+        connection or a crash here cannot leave the carrier on."""
+        return self.send({"cmd": "tune", "ms": int(ms)})
+
     def stop_now(self, timeout: float = 0.5) -> bool:
         """STOP with priority: bypasses the queue and waits until it is on the wire (SR-01)."""
         if not self.connected or self._loop is None:

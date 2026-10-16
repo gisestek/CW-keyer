@@ -19,6 +19,7 @@ from .bus import Bus
 
 log = logging.getLogger(__name__)
 RETRY_S = 30
+OK, DUPLICATE, REJECTED, RETRY = "ok", "duplicate", "rejected", "retry"
 TIMEOUT_S = 15
 
 
@@ -89,19 +90,46 @@ class WavelogClient:
             rows = self._load()
         while rows and not self._stop.is_set():
             row = rows[0]
-            ok, msg = self.post(row["adif"])
-            if not ok:
-                self.bus.publish("wavelog.status", state="error", pending=len(rows),
-                                 call=row.get("call", ""), msg=msg)
+            outcome, msg = self.post(row["adif"])
+            call = row.get("call", "")
+            if outcome == RETRY:
+                self.bus.publish("wavelog.status", state="error", pending=len(rows), call=call, msg=msg)
                 return
+            if outcome == REJECTED:
+                # this one record is refused for good: keep it aside so it cannot block the QSOs behind it
+                self._reject(row, msg)
             with self._lock:
                 rows = self._load()[1:]
                 self._save(rows)
-            self.bus.publish("wavelog.status", state="sent", pending=len(rows), call=row.get("call", ""))
+            state = {OK: "sent", DUPLICATE: "duplicate", REJECTED: "rejected"}[outcome]
+            self.bus.publish("wavelog.status", state=state, pending=len(rows), call=call, msg=msg)
 
-    def post(self, adif: str) -> tuple[bool, str]:
+    def _reject(self, row: dict, msg: str) -> None:
+        path = self.queue_path.with_name("wavelog-rejected.jsonl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({**row, "reason": msg, "rejected_utc": time.time()}, ensure_ascii=False) + "\n")
+        log.warning("Wavelog rejected %s: %s (kept in %s)", row.get("call", ""), msg, path)
+
+    def test(self) -> tuple[bool, str]:
+        """Settings dialog: checks address, API key and station profile with Wavelog's dry run.
+
+        Nothing is written to the log (the old test logged a QSO with TEST, which was a
+        duplicate from the second try on).
+        """
+        outcome, msg = self.post("<CALL:4>TEST<QSO_DATE:8>19700101<TIME_ON:6>000000<BAND:3>40m"
+                                 "<MODE:2>CW<RST_SENT:3>599<RST_RCVD:3>599<EOR>", dryrun=True)
+        return outcome == OK, msg
+
+    def post(self, adif: str, dryrun: bool = False) -> tuple[str, str]:
+        """Sends one record. Returns (outcome, message), outcome = OK | DUPLICATE | REJECTED | RETRY.
+
+        Wavelog answers 201 {"status": "created", …, "adif_errors": 0, "messages": [...]} on success,
+        400 {"status": "abort", …, "messages": [...]} when the record is refused (a duplicate among
+        others), 401 {"status": "failed", "reason": …} for a wrong key or station profile.
+        """
         w = self.settings.get("wavelog", {}) or {}
-        url = (w.get("url") or "").rstrip("/") + "/api/qso"
+        url = (w.get("url") or "").rstrip("/") + "/api/qso" + ("/true" if dryrun else "")
         payload = json.dumps({
             "key": w.get("key", ""),
             "station_profile_id": str(w.get("station_profile_id", "")),
@@ -113,13 +141,30 @@ class WavelogClient:
                                               "User-Agent": "CWStation"})
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-                body = resp.read(2000).decode("utf-8", "replace")
-                if resp.status >= 300:
-                    return False, f"HTTP {resp.status}: {body[:200]}"
-                if '"status":"failed"' in body.replace(" ", "") or "error" in body.lower():
-                    return False, body[:200]
-                return True, body[:200]
+                return self._outcome(resp.status, resp.read(4000).decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
-            return False, f"HTTP {e.code}: {e.read(200).decode('utf-8', 'replace')}"
+            return self._outcome(e.code, e.read(4000).decode("utf-8", "replace"))
         except Exception as e:  # noqa: BLE001  (network, DNS, TLS, timeout…)
-            return False, str(e)
+            return RETRY, str(getattr(e, "reason", e))
+
+    @staticmethod
+    def _outcome(code: int, body: str) -> tuple[str, str]:
+        try:
+            data = json.loads(body)
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            # not Wavelog's JSON: wrong address, a proxy or login page – keep the QSO and retry
+            return (RETRY, f"HTTP {code}: unexpected answer – check the Wavelog address ({body[:120].strip()})")
+        status = str(data.get("status", "")).lower()
+        messages = data.get("messages") or []
+        if not isinstance(messages, list):
+            messages = [messages]
+        text = "; ".join(str(m) for m in messages if m) or str(data.get("reason", "")) or body[:200]
+        if 200 <= code < 300 and status in ("created", "ok", "success"):
+            return OK, "; ".join(str(m) for m in messages if m)
+        if status == "abort" or code == 400:
+            if "duplicate" in text.lower():
+                return DUPLICATE, text         # already in Wavelog: nothing left to do
+            return REJECTED, f"HTTP {code}: {text}"
+        return RETRY, f"HTTP {code}: {text}"    # wrong key / station profile, server trouble: keep the queue

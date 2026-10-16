@@ -39,6 +39,7 @@ class WinkeyerSim:
         self.rts = True
         self.sent: list[str] = []          # characters actually keyed
         self.cleared = 0                   # how many times the buffer was cleared
+        self.key_immediate = False         # TUNE (key-immediate) is on
         self._out = deque()                # bytes towards the host
         self._buf: deque[str] = deque()    # characters waiting to be keyed
         self._pending = bytearray()        # incomplete command
@@ -109,6 +110,8 @@ class WinkeyerSim:
                     self.weight = value
                 elif b == CMD_MODE:
                     self.mode = value
+                elif b == CMD_KEY_IMMEDIATE:
+                    self.key_immediate = bool(value)
                 continue
             if b == CMD_MERGE:
                 if len(self._pending) < 3:

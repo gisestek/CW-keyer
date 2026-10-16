@@ -152,6 +152,17 @@ class KeyerSim:
                 if self.busy:
                     await self.stop("controller_lost")
 
+    async def _tune(self, ms: int):
+        """Like the firmware: one key-down element of `ms`, capped by the limits."""
+        await self.broadcast({"ev": "state", "busy": True, "key": True, "pending": 0, "controller": 0})
+        try:
+            await self._elem(ms, True)
+        finally:
+            self._set_key(False)
+            if self.busy:
+                self.busy = False
+                await self.broadcast({"ev": "state", "busy": False, "key": False, "pending": 0, "controller": 0})
+
     async def command(self, ws, msg):
         cmd = msg.get("cmd", "")
         if ws is self.controller:
@@ -189,7 +200,13 @@ class KeyerSim:
                     self.cfg[k] = max(LIMITS_MIN[k], min(LIMITS_MAX[k], int(msg[k])))
             await self.broadcast({"ev": "config", "cfg": dict(self.cfg)})
         elif cmd == "tune":
-            await self._send(ws, {"ev": "error", "code": "UNKNOWN_CMD", "msg": "tune not simulated"})
+            ms = min(int(msg.get("ms") or 0), self.cfg["tune_max_ms"], self.cfg["keydown_max_ms"] - 200)
+            if self.busy or ms <= 0:
+                await self._send(ws, {"ev": "error", "code": "BUSY", "msg": "tune only when idle"})
+            else:
+                self.tx_since = time.monotonic()
+                self.busy = True
+                self._worker = asyncio.get_running_loop().create_task(self._tune(ms))
         else:
             await self._send(ws, {"ev": "error", "code": "UNKNOWN_CMD", "msg": cmd})
 

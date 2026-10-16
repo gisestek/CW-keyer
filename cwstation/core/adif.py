@@ -78,3 +78,38 @@ def append_qso(path: Path, qso: dict) -> str:
             f.write(header())
         f.write(record + "\n")
     return record
+
+
+def read_records(path: Path) -> list[dict]:
+    """Reads the QSO records of an .adi file as {field (lower case): value}.
+
+    Field lengths are taken as bytes, which matches what this program writes;
+    files that count characters instead lose at most a few characters of a
+    non-ASCII value, never a record.
+    """
+    data = Path(path).read_bytes()
+    eoh = data.lower().find(b"<eoh>")
+    i = eoh + 5 if eoh >= 0 else 0
+    records, cur = [], {}
+    n = len(data)
+    while i < n:
+        lt = data.find(b"<", i)
+        if lt < 0:
+            break
+        gt = data.find(b">", lt)
+        if gt < 0:
+            break
+        spec = data[lt + 1:gt].decode("ascii", "replace").lower()
+        i = gt + 1
+        if spec == "eor":
+            if cur:
+                records.append(cur)
+            cur = {}
+            continue
+        parts = spec.split(":")
+        if len(parts) < 2 or not parts[1].isdigit():
+            continue
+        length = int(parts[1])
+        cur[parts[0]] = data[i:i + length].decode("utf-8", "replace").strip()
+        i += length
+    return records

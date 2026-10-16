@@ -11,11 +11,14 @@ from pathlib import Path
 
 from .core import adif
 from .core.bus import Bus
+from .core.qrz import QrzClient
 from .core.qso import QsoSession
 from .core.resources import model_dir
 from .core.settings import Settings, config_dir
 from .core.textlog import TextLog
 from .core.txwindows import TxWindows
+from .core.updater import Updater
+from .core.worked import WorkedIndex
 from .core.wavelog import WavelogClient
 from .rx.audio import SimulatedRadioSource, SoundCardSource, WavSource
 from .rx.rx_module import RxModule
@@ -49,6 +52,9 @@ class Station:
         self.tx = TxModule(self.bus, settings, self.keyer, qso=self.qso)
         self.tx_windows = TxWindows(self.bus)
         self.cq = CqRepeater(self.bus, settings)
+        self.qrz = QrzClient(self.bus, settings)
+        self.worked = WorkedIndex(self.worked_paths)
+        self.updater = Updater(self.bus, settings)
         self.wavelog = WavelogClient(self.bus, settings, config_dir() / "wavelog-queue.jsonl")
         self.textlog = TextLog(self.bus, settings.log_folder(), float(settings.get("log.line_pause_s", 3.0)))
         self.rx = RxModule(self.bus, model_dir(), self._make_source, tx_windows=self.tx_windows)
@@ -93,6 +99,14 @@ class Station:
     def adif_path(self) -> Path:
         custom = self.settings.get("qso.adif_file") or ""
         return Path(custom) if custom else self.settings.log_folder() / "cwstation.adi"
+
+    def worked_paths(self) -> list[Path]:
+        """Own ADIF log plus an optional extra file, e.g. an export from Wavelog (FR-CORE-09)."""
+        paths = [self.adif_path()]
+        extra = (self.settings.get("qso.worked_adif") or "").strip()
+        if extra and Path(extra) != paths[0]:
+            paths.append(Path(extra))
+        return paths
 
     def log_qso(self, freq_mhz: float | None = None, tx_pwr: str = "", to_wavelog: bool | None = None) -> dict:
         """Write the current QSO to the ADIF file and (optionally) send it to Wavelog (UC6)."""
@@ -150,6 +164,7 @@ class Station:
         log.info("shutdown: sending STOP")
         self.cq.stop("shutdown")
         self.wavelog.stop()
+        self.qrz.stop()
         try:
             self.bus.publish("tx.stop", reason="shutdown")
         finally:

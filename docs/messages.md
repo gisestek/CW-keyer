@@ -22,13 +22,15 @@ Jokaisessa viestissä on kentät `type` ja `utc` (ISO 8601, esim. `2026-09-17T12
 | `tx.send` | `text` | lähetettävä teksti; makromuuttujat `{MYCALL}` ym. laajennetaan TX-moduulissa |
 | `tx.stop` | `reason` (`button`/`esc`/`shutdown`/…) | STOP (SR-01, SR-05) |
 | `tx.set` | `wpm`?, `weight`? | nopeus ja painotus lennossa (FR-TX-04) |
+| `tx.tune` | `seconds`? | TUNE: avain alhaalla viritystä varten (FR-TX-08). Oletus `keyer.tune_s`, enintään 10 s. Ei kesken lähetyksen |
 
 ## TX-moduuli ja keyer → muut
 
 | type | Kentät | Milloin |
 | --- | --- | --- |
 | `tx.queued` | `text` | teksti hyväksytty keyerille (tarkat merkit, jotka kaiutetaan) |
-| `tx.warning` | `code` (`not_connected`/`dropped_chars`/`no_callsign`/`no_call`), `detail` | lähetystä ei tehty tai merkkejä pudotettiin. `no_call` = makro tarvitsee `{CALL}`-muuttujan, mutta vastaaseman tunnusta ei ole |
+| `tx.tuning` | `ms` | TUNE alkoi (keyer otti sen vastaan). Loppu näkyy `tx.state`-viestinä `busy: false` |
+| `tx.warning` | `code` (`not_connected`/`dropped_chars`/`no_callsign`/`no_call`/`tune_busy`), `detail` | lähetystä ei tehty tai merkkejä pudotettiin. `no_call` = makro tarvitsee `{CALL}`-muuttujan, mutta vastaaseman tunnusta ei ole. `tune_busy` = TUNE pyydettiin kesken lähetyksen |
 | `tx.echo` | `ch` | keyer aloitti merkin lähettämisen (FR-TX-03); myös `" "`, `"<"`, `">"` |
 | `tx.state` | `busy`, `key`, `pending` | lähetys alkoi tai päättyi |
 | `tx.stopped` | `reason` | jono tyhjennettiin (STOP, vika, yhteyskatkos) |
@@ -43,7 +45,13 @@ Jokaisessa viestissä on kentät `type` ja `utc` (ISO 8601, esim. `2026-09-17T12
 | --- | --- | --- |
 | `qso.update` | `fields` (`call`, `name`, `qth`, `gridsquare`, `rst_sent`, `rst_rcvd`, `comment`) | käynnissä olevan QSO:n kentät muuttuivat: tulkittu teksti, tunnuksen klikkaus tai käsin muokattu kenttä |
 | `qso.logged` | `call`, `path` (ADIF-tiedosto), `adif` (tietue), `wavelog` (`true`/`false`) | QSO kirjoitettiin ADIF-tiedostoon (FR-CORE-04). Tämän jälkeen kentät nollataan (`qso.update` tyhjillä kentillä) |
-| `wavelog.status` | `state` (`queued`/`sent`/`error`), `pending` (jonon pituus), `call`, `msg`? | QSO lisättiin lähetysjonoon, lähti Wavelogiin tai lähetys epäonnistui (FR-CORE-05). Jonoa yritetään uudelleen 30 s välein |
+| `wavelog.status` | `state` (`queued`/`sent`/`duplicate`/`rejected`/`error`), `pending` (jonon pituus), `call`, `msg`? | QSO lisättiin lähetysjonoon, lähti Wavelogiin, oli siellä jo (`duplicate`, poistetaan jonosta), hylättiin pysyvästi (`rejected`, siirretään tiedostoon `wavelog-rejected.jsonl`) tai lähetys epäonnistui tilapäisesti (`error`: jono säilyy ja sitä yritetään uudelleen 30 s välein) (FR-CORE-05) |
+| `qrz.result` | `call`, `state` (`busy`/`ok`/`not_found`/`error`/`no_login`), `data` (QRZ:n Callsign-kentät, esim. `fname`, `name`, `addr2`, `country`, `grid`, `lat`, `lon`, `lotw`), `web` (qrz.com-sivun osoite), `image_b64`?, `subscriber`?, `msg`? | Tunnuksen QRZ.com-haun tulos tunnuspaneelille (FR-CORE-08). `busy` tulee heti haun alkaessa, välimuistista vastaus tulee suoraan |
+| `update.available` | `version`, `name`, `notes` (julkaisutiedote, Markdown), `page`, `size`, `one_click`, `reason` (`source`/`platform`/`readonly`/`no_checksum`, kun `one_click` on `false`), `manual` | GitHubissa on uudempi versio (FR-CORE-10) |
+| `update.none` | `manual`, `version` | käsin pyydetty tarkistus: uusin versio on jo käytössä |
+| `update.error` | `msg`, `manual`, `stage` (`check`/`download`/`unpack`) | tarkistus, lataus tai purku epäonnistui |
+| `update.progress` | `done`, `total` (tavuja) | lataus etenee, enintään 5 kertaa sekunnissa |
+| `update.ready` | `version` | ladattu, tarkistettu ja purettu: ikkuna käynnistää apuskriptin ja sulkeutuu |
 | `cq.state` | `active`, `reason` (`start`/`toggle`/`answer`/`manual`/`stop`/`no_macro`/`shutdown`) | CQ-toisto alkoi tai päättyi (FR-TX-07). `answer` = vastaanotettiin tekstiä, `manual` = operaattori lähetti itse, `stop` = STOP |
 
 CQ-toisto lähettää makronsa tavallisena `tx.send`-viestinä, joten se näkyy muille moduuleille samoin kuin käsin kirjoitettu lähetys.

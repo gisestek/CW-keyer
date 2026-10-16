@@ -15,9 +15,48 @@ Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [Dee
 | `hardware/` | Kytkentäkaaviot |
 | `rx/deepcw/` | M0-kokeilun komentorivityökalut: tulkki, benchmark, vertailu |
 | `docs/` | Vaatimusmäärittely, tämä käyttöohje, viestiskeemat (`messages.md`) |
-| `packaging/` | Windows-paketointi (PyInstaller) |
+| `packaging/` | Windows-paketointi (PyInstaller) ja GitHub Actions -rakennus |
 | `tests/` | Automaattiset testit |
 | `third_party/deepcw-engine/` | DeepCW-malli (AGPL-3.0) |
+
+## Uutta seuraavassa versiossa
+
+**Tunnuspaneeli ja QRZ.com-haku.** Tekstivirran oikealle puolelle jäävä tyhjä tila on nyt tunnuspaneeli. Kun klikkaat tunnusta, se asettuu vastaasemaksi kuten ennenkin, ja paneeli näyttää sen tiedot QRZ.comista: nimi, QTH, maa, lokaattori, etäisyys ja suuntima omasta lokaattorista, lupaluokka, QSL-tavat (LoTW, eQSL, suora, manageri), CQ/ITU-vyöhykkeet ja kuva.
+
+- *Use in QSO* kopioi etunimen, QTH:n ja lokaattorin QSO-kenttiin, joten `{NAME}`-makro ja loki saavat ne suoraan. *qrz.com* avaa aseman sivun selaimessa.
+- Myös tekstistä tunnistettu vastaasema haetaan automaattisesti, kun tunnus on pysynyt samana 1,5 s (Asetukset → QRZ.com, voi kytkeä pois). Haut ja "ei löytynyt" -vastaukset muistetaan istunnon ajan, joten sama tunnus haetaan vain kerran.
+- Paneelin alalaidassa on lista haetuista tunnuksista. Paneelin leveyttä voi säätää raahaamalla, ja sen saa piiloon valikosta tai Ctrl+K:lla.
+- Asetukset → *QRZ.com*: käyttäjätunnus ja salasana sekä *Test connection*. Haku käyttää QRZ:n XML-rajapintaa. Ilmaisella tunnuksella saa nimen, paikkakunnan ja maan; *XML Logbook Data* -tilauksella myös lokaattorin, kuvan ja QSL-tiedot. Ilman tunnusta paneeli näyttää vain tunnuksen ja *qrz.com*-painikkeen. Väärää salasanaa ei yritetä uudelleen, koska QRZ lukitsee toistuvat epäonnistuneet kirjautumiset.
+- Salasana tallentuu `settings.json`-tiedostoon selväkielisenä, kuten Wavelogin API-avainkin.
+
+**Onko asema jo työskennelty (*worked before*).** Tunnuspaneeli kertoo samalla, löytyykö asema omasta lokista: *New station*, tai *Worked 3×*, bändit (nykyinen bändi lihavoituna) ja viimeisimmät QSO:t päivämäärineen, raportteineen ja nimineen. Jos asemaa ei ole vielä työskennelty nykyisellä bändillä, paneeli näyttää oranssina *New on 20m*. Tieto päivittyy, kun vaihdat taajuutta tai tallennat QSO:n.
+
+- Lähteenä on ohjelman oma ADIF-tiedosto (`cwstation.adi`). Asetukset → *Log QSO* → *Also check worked before from* -kenttään voi lisätä toisen ADIF-tiedoston, esim. Wavelogista viedyn koko lokin. Sama QSO kahdessa tiedostossa lasketaan kerran.
+- Tunnukset vertaillaan ilman etu- ja jälkiliitteitä: `OH2BH/P` ja `DL/OH2BH` ovat sama asema kuin `OH2BH`.
+- Toimii ilman QRZ-tunnustakin.
+
+**TUNE.** Työkalurivillä taajuuskentän vieressä oleva *TUNE*-painike (Ctrl+T) pitää avaimen alhaalla antennivirittimen säätöä varten. Vahingon välttämiseksi se vaatii kaksi painallusta: ensimmäinen muuttaa painikkeen keltaiseksi *Sure?*-tilaan, ja vasta toinen painallus 3 sekunnin sisällä aloittaa kantoaallon. Jos vahvistusta ei tule, painike palaa ennalleen; Esc peruu myös vahvistuksen. Kesto asetetaan kohdassa Asetukset → Keyer → *TUNE length* (1–10 s, oletus 5 s). Lähetyksen aikana painike on punainen (*TUNING*), ja yksi painallus tai Esc lopettaa heti. TUNE ei käynnisty kesken lähetyksen, ja se pysäyttää CQ-toiston. Teksti-lokiin jää rivi `[TUNE 5 s]`.
+
+- **Oma WiFi-keyer** rajaa keston itse (enintään 10 s ja aina alle avaimen enimmäispainalluksen), joten kantoaalto katkeaa, vaikka yhteys tai ohjelma katoaisi.
+- **WinKeyer:** laitteen *key immediate* -komennolla ei ole omaa aikarajaa, joten ohjelma vapauttaa avaimen ajastimella, STOPilla ja sulkiessaan. **Jos ohjelma kaatuu kesken TUNEn, WinKeyer jää lähettämään, kunnes USB irrotetaan.** Pidä TUNE lyhyenä ja sormi STOPilla.
+
+
+**Päivitykset yhdellä klikkauksella.** Ohjelma tarkistaa käynnistyessään (enintään kerran vuorokaudessa) GitHubista, onko uudempi versio julkaistu. Jos on, ikkunan yläreunaan tulee sininen palkki: *CW Station 0.7.0 is available*, ja painikkeet *What's new*, *Update and restart*, *Skip this version* ja ✕ (myöhemmin). Valikossa on lisäksi *Check for updates…*.
+
+- *Update and restart* lataa zipin (noin 85 Mt), tarkistaa sen SHA-256-tarkistussumman GitHubin julkaisemaa arvoa vasten, purkaa sen ohjelmakansion viereen ja käynnistää ohjelman uudelleen uutena versiona. Sulkeminen tapahtuu tavalliseen tapaan, eli STOP lähtee ensin.
+- Vanha versio jää kansioon `CWStation.old` (esim. `C:\CWStation\CWStation.old`), josta sen voi palauttaa käsin. Jos kansion vaihto epäonnistuu, vanha versio palautetaan ja käynnistetään automaattisesti. Asetukset ovat `%APPDATA%\CWStation`-kansiossa, joten päivitys ei koske niihin. Päivityksen loki: `%APPDATA%\CWStation\update.log`.
+- Päivitys ei käynnisty kesken lähetyksen, TUNEn tai CQ-toiston, ja tallentamattomasta QSO:sta kysytään ensin.
+- Ohjelma lataa vain tämän projektin GitHub-julkaisuista ja vain, jos julkaisussa on tarkistussumma. Muuten palkki tarjoaa vain julkaisusivun avaamista.
+- Yhden klikkauksen päivitys vaatii, että ohjelmakansio on kirjoitettavissa ilman ylläpitäjän oikeuksia (esim. `C:\CWStation`, ei *Program Files*). Lähdekoodista ajettaessa (`python -m cwstation`) palkki ohjaa julkaisusivulle; päivitä silloin `git pull`illa.
+- Asetukset → *Station*: *Check for updates at start-up* ja *Include test versions (pre-releases)*. Molemmat ovat oletuksena päällä, koska kaikki 0.x-versiot julkaistaan testiversioina.
+
+**Wavelog-korjaus.** Wavelogin onnistunut vastaus sisältää kentän `adif_errors` (arvo 0), ja ohjelma tulkitsi sanan "error" virheeksi. Ensimmäinen QSO meni siis Wavelogiin, mutta jäi silti jonoon. Uusintayritys hylättiin kaksoiskappaleena (HTTP 400 *Duplicate*), ja kaikki myöhemmät QSO:t jäivät jonoon sen taakse. Nyt:
+
+- Vastaus tulkitaan Wavelogin JSON-kentistä (`status: created` / `abort` / `failed`) eikä tekstistä.
+- Kaksoiskappale tarkoittaa, että QSO on jo Wavelogissa: se poistetaan jonosta, ja tilarivillä lukee *was already in the log*. Jonoon jumittuneet QSO:t lähtevät siis itsestään ensimmäisellä yrityksellä päivityksen jälkeen.
+- Jos Wavelog hylkää yksittäisen tietueen muusta syystä, se siirretään tiedostoon `%APPDATA%\CWStation\wavelog-rejected.jsonl`, tekstivirtaan tulee ilmoitus, ja muut QSO:t lähtevät normaalisti.
+- Väärä API-avain tai station profile, palvelinvika ja verkkokatko pitävät jonon tallessa kuten ennenkin.
+- *Test connection* käyttää Wavelogin koeajoa (`POST /api/qso/true`), joten testi ei enää tallenna mitään.
 
 ## Uutta versiossa 0.6.0
 
@@ -120,7 +159,17 @@ Skripti tekee seuraavat, 5–15 min:
 4. Ajaa valmiin ohjelman itsetestin: ikkuna näkyy noin 15 s, ja testi tarkistaa, että tulkinta ja lähetys toimivat.
 5. Pakkaa tuloksen tiedostoksi `dist\CWStation-0.6.0-win64.zip`.
 
-Vaihtoehto: GitHub Actions rakentaa saman zipin. Siirrä `packaging/github-build-windows.yml` polkuun `.github/workflows/build-windows.yml` ja pushaa GitHubiin; rakennus käynnistyy Actions-välilehdeltä (*Run workflow*) tai `v*`-tagista.
+Vaihtoehto: GitHub Actions rakentaa saman zipin. Ota se käyttöön kerran siirtämällä `packaging/github-build-windows.yml` polkuun `.github/workflows/build-windows.yml` ja pushaamalla. Rakennus käynnistyy Actions-välilehdeltä (*Run workflow*) tai versiotagista.
+
+### Uuden version julkaisu
+
+Asennetut ohjelmat löytävät uuden version vain, jos GitHub-julkaisussa on liitteenä täsmälleen `CWStation-<versio>-win64.zip` ja versio on sama kuin tagissa. Helpoin tapa:
+
+1. Nosta versionumero tiedostossa `cwstation/__init__.py` (`__version__ = "0.7.0"`) ja commitoi.
+2. `git tag v0.7.0` ja `git push origin main v0.7.0`.
+3. GitHub Actions ajaa testit, rakentaa zipin, ajaa itsetestin ja julkaisee releasen zip liitteenä. 0.x-versiot merkitään testiversioiksi (*pre-release*), ja julkaisutiedotteeseen kootaan commitit edellisestä versiosta. Tiedotetta voi muokata GitHubissa, ja ohjelman *What's new* näyttää sen.
+
+Jos tagi ja `__version__` eivät täsmää, rakennus pysähtyy heti. Muuten asennetut ohjelmat tarjoaisivat samaa päivitystä loputtomasti. Käsin tehtävässä julkaisussa pätee sama: zipin nimen ja tagin version on oltava samat.
 
 ## Asennus radiokoneelle
 
@@ -133,7 +182,7 @@ Vaihtoehto: GitHub Actions rakentaa saman zipin. Siirrä `packaging/github-build
    - **Audio:** DigiRigin äänitulo, yleensä *USB PnP Sound Device (MME)*. Jos taso tai ääni ei toimi, kokeile saman laitteen *Windows WASAPI*- tai *DirectSound*-versiota.
    - **Keyer:** valitse *WiFi keyer (this project)* ja osoite `ws://cwkeyer.local:81/`. Jos nimi ei löydy, käytä keyerin IP-osoitetta, esim. `ws://192.168.1.50:81/`. WinKeyer-laitteella valitse *WinKeyer (serial)* ja laitteen sarjaportti (esim. `COM5`).
    - **QSO (0.3.0):** ADIF-tiedoston polku (tyhjä = `Documents\CWStation\logs\cwstation.adi`), teho watteina ja CQ-toiston väli.
-   - **Wavelog (0.3.0):** rasti *Enabled*, palvelimen osoite ilman `/api`-osaa (esim. `https://wavelog.example.com`), API-avain ja `station_profile_id` (Wavelogissa *Station Locations* -sivulla). Paina *Test connection*: se lähettää yhden testi-QSO:n tunnuksella `TEST`. Poista testitietue Wavelogista jälkeenpäin.
+   - **Wavelog (0.3.0):** rasti *Enabled*, palvelimen osoite ilman `/api`-osaa (esim. `https://wavelog.example.com`), API-avain ja `station_profile_id` (Wavelogissa *Station Locations* -sivulla). Paina *Test connection*: se tarkistaa osoitteen, API-avaimen ja station profilen Wavelogin koeajotilassa (*dry run*), eikä lokiin tallennu mitään. (Ennen tätä korjausta testi tallensi QSO:n tunnuksella `TEST` 1.1.1970. Jos sellainen on Wavelogissa, sen voi poistaa.)
 4. Keyerin tilan pitää muuttua vihreäksi (*Keyer: connected*), ja tilarivillä pitää näkyä äänitaso.
 
 ## Käyttöönottotesti asemalla
@@ -181,8 +230,8 @@ Ongelmatilanteissa ohjelman loki on `%APPDATA%\CWStation\cwstation.log`.
 - **Δ Hz:** vaatii, että radion sivuääni kuuluu äänikortille. Ilman sitä ohjelma ei tiedä omaa lähetystaajuuttaan eikä näytä eroa.
 - **WinKeyer:** ei heartbeatia (ks. yllä), eivätkä ohjelman aikarajat (SR-02, SR-03) päde. Laitetta ei ole testattu oikealla raudalla, vain protokollasimulaattorilla; ensimmäisen kokeilijan kannattaa käydä läpi käyttöönottotestin kohdat 23–26. Melalla lähettäminen kesken ohjelman lähetyksen (paddle break-in) tyhjentää laitteen puskurin, mistä ohjelma kertoo vain lokissa.
 - **RST-ehdotus:** perustuu vastaanotetun äänen signaali-kohinasuhteeseen, ei radion S-mittariin. Kapea suodin, QSB ja kohinasalpa muuttavat lukemaa, joten pidä sitä lähtökohtana eikä mittaustuloksena. Luettavuus R arvioidaan samasta luvusta, ei tulkinnan virheistä.
-- **Wavelog:** vain QSO:n lähetys. Ohjelma ei lue lokia takaisin eikä tarkista, onko asema jo työskennelty (ei *worked before* -tietoa).
-- **TUNE:** puuttuu (P2). Firmware tukee sitä jo.
+- **Wavelog:** vain QSO:n lähetys. Ohjelma ei lue lokia Wavelogista. *Worked before* -tieto tulee omasta ADIF-tiedostosta ja valinnaisesta toisesta ADIF-tiedostosta, joten Wavelogin vienti pitää päivittää käsin.
+- **TUNE WinKeyerillä:** ei laitteen omaa aikarajaa (ks. yllä).
 - **Laitteistoinen aikaraja:** keyerin laitteistoinen aikarajapiiri puuttuu vielä. Jumittuneen ESP:n varmistuksena on vain sen oma watchdog.
 
 ## Kehittäjälle

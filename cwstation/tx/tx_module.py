@@ -4,9 +4,11 @@ Subscribes:
   tx.send   {text}              raw text; macros like {MYCALL} are expanded here
   tx.stop   {reason}            STOP (GUI button, Esc, shutdown)
   tx.set    {wpm?, weight?}     live speed / weight (FR-TX-04)
+  tx.tune   {seconds?}          key down for tuning (FR-TX-08); default keyer.tune_s
 Publishes:
   tx.queued  {text}             text accepted for sending (exact characters that will echo)
-  tx.warning {code, detail}     not_connected | dropped_chars | no_callsign
+  tx.warning {code, detail}     not_connected | dropped_chars | no_callsign | tune_busy
+  tx.tuning  {ms}               TUNE was started
   tx.stopped {reason}           also published locally if the keyer is unreachable
 """
 from __future__ import annotations
@@ -19,6 +21,7 @@ from ..core.bus import Bus
 from .keyer_client import KeyerClient
 
 log = logging.getLogger(__name__)
+TUNE_MAX_S = 10
 
 
 class TxModule:
@@ -30,6 +33,12 @@ class TxModule:
         bus.subscribe("tx.send", self._on_send)
         bus.subscribe("tx.stop", self._on_stop)
         bus.subscribe("tx.set", self._on_set)
+        bus.subscribe("tx.tune", self._on_tune)
+        bus.subscribe("tx.state", self._on_state)
+        self._busy = False
+
+    def _on_state(self, msg: dict) -> None:
+        self._busy = bool(msg.get("busy"))
 
     def _on_send(self, msg: dict) -> None:
         raw = msg.get("text", "")
@@ -55,6 +64,19 @@ class TxModule:
             self.bus.publish("tx.warning", code="not_connected", detail="")
             return
         self.bus.publish("tx.queued", text=text)
+
+    def _on_tune(self, msg: dict) -> None:
+        secs = msg.get("seconds") or self.settings.get("keyer.tune_s", 5) or 5
+        ms = int(max(1.0, min(TUNE_MAX_S, float(secs))) * 1000)
+        if self._busy:
+            self.bus.publish("tx.warning", code="tune_busy", detail="")
+            return
+        if not self.client.tune(ms):
+            self.bus.publish("tx.warning", code="not_connected" if not self.client.connected else "tune_busy",
+                             detail="")
+            return
+        log.info("TUNE %d ms", ms)
+        self.bus.publish("tx.tuning", ms=ms)
 
     def _on_stop(self, msg: dict) -> None:
         t0 = time.perf_counter()

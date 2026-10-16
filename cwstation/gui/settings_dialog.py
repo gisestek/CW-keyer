@@ -42,6 +42,12 @@ class SettingsDialog(QDialog):
         self.font_size = QSpinBox(minimum=8, maximum=32, value=int(settings.get("ui.font_size", 13)))
         f.addRow(tr("settings.font_size"), self.font_size)
         f.addRow(QLabel(tr("settings.restart_note")))
+        self.upd_auto = QCheckBox()
+        self.upd_auto.setChecked(bool(settings.get("update.auto", True)))
+        f.addRow(tr("settings.update.auto"), self.upd_auto)
+        self.upd_pre = QCheckBox()
+        self.upd_pre.setChecked(bool(settings.get("update.prerelease", True)))
+        f.addRow(tr("settings.update.prerelease"), self.upd_pre)
         tabs.addTab(w, tr("settings.tab.station"))
 
         # Audio
@@ -106,6 +112,9 @@ class SettingsDialog(QDialog):
         self.txmax = QSpinBox(minimum=10000, maximum=120000, singleStep=10000,
                               value=int(settings.get("keyer.tx_max_ms", 120000)))
         f.addRow(tr("settings.keyer.tx"), self.txmax)
+        self.tune_s = QSpinBox(minimum=1, maximum=10, value=int(settings.get("keyer.tune_s", 5)))
+        self.tune_s.setSuffix(" s")
+        f.addRow(tr("settings.keyer.tune"), self.tune_s)
         self.limits_note = QLabel(tr("settings.keyer.limits_note"))
         self.limits_note.setWordWrap(True)
         f.addRow(self.limits_note)
@@ -135,6 +144,14 @@ class SettingsDialog(QDialog):
         row.addWidget(self.adif_file, 1)
         row.addWidget(adif_browse)
         f.addRow(tr("settings.qso.adif"), row)
+        row = QHBoxLayout()
+        self.worked_adif = QLineEdit(settings.get("qso.worked_adif", ""))
+        self.worked_adif.setPlaceholderText(tr("settings.qso.worked.placeholder"))
+        worked_browse = QPushButton(tr("settings.log.browse"))
+        worked_browse.clicked.connect(self._browse_worked)
+        row.addWidget(self.worked_adif, 1)
+        row.addWidget(worked_browse)
+        f.addRow(tr("settings.qso.worked"), row)
         self.tx_pwr = QLineEdit(str(settings.get("qso.tx_pwr", "")))
         f.addRow(tr("settings.qso.power"), self.tx_pwr)
         self.cq_interval = QSpinBox(minimum=2, maximum=120, value=int(settings.get("cq.interval_s", 8)))
@@ -161,6 +178,28 @@ class SettingsDialog(QDialog):
         self.wl_result.setWordWrap(True)
         f.addRow(test, self.wl_result)
         tabs.addTab(w, tr("settings.tab.wavelog"))
+
+        # QRZ.com
+        w = QWidget(); f = QFormLayout(w)
+        qz = settings.get("qrz", {}) or {}
+        self.qrz_user = QLineEdit(qz.get("username", ""))
+        f.addRow(tr("settings.qrz.user"), self.qrz_user)
+        self.qrz_pw = QLineEdit(qz.get("password", ""))
+        self.qrz_pw.setEchoMode(QLineEdit.Password)
+        f.addRow(tr("settings.qrz.password"), self.qrz_pw)
+        self.qrz_auto = QCheckBox()
+        self.qrz_auto.setChecked(bool(qz.get("auto", True)))
+        f.addRow(tr("settings.qrz.auto"), self.qrz_auto)
+        qtest = QPushButton(tr("settings.wavelog.test"))
+        qtest.clicked.connect(self._test_qrz)
+        self.qrz_result = QLabel("")
+        self.qrz_result.setWordWrap(True)
+        f.addRow(qtest, self.qrz_result)
+        qnote = QLabel(tr("settings.qrz.note"))
+        qnote.setWordWrap(True)
+        qnote.setStyleSheet("color:#5a5a5a;")
+        f.addRow(qnote)
+        tabs.addTab(w, "QRZ.com")
 
         # Macros
         w = QWidget(); lay = QVBoxLayout(w)
@@ -203,6 +242,12 @@ class SettingsDialog(QDialog):
         if path:
             self.adif_file.setText(path)
 
+    def _browse_worked(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, tr("settings.qso.worked"), self.worked_adif.text(),
+                                              "ADIF (*.adi *.adif)")
+        if path:
+            self.worked_adif.setText(path)
+
     def _test_wavelog(self) -> None:
         from ..core.bus import Bus
         from ..core.wavelog import WavelogClient
@@ -216,9 +261,25 @@ class SettingsDialog(QDialog):
                 return probe.get(name, default) if "." not in name else default
 
         client = WavelogClient(Bus(), _S(), self.s.path.parent / "wavelog-test.jsonl")
-        ok, msg = client.post("<CALL:4>TEST<QSO_DATE:8>19700101<TIME_ON:6>000000<BAND:3>40m"
-                              "<MODE:2>CW<RST_SENT:3>599<RST_RCVD:3>599<EOR>")
+        ok, msg = client.test()
         self.wl_result.setText(tr("settings.wavelog.ok") if ok else tr("settings.wavelog.fail", msg=msg[:200]))
+
+    def _test_qrz(self) -> None:
+        from ..core.bus import Bus
+        from ..core.qrz import QrzClient
+
+        probe = {"qrz": {"username": self.qrz_user.text().strip(), "password": self.qrz_pw.text()}}
+
+        class _S:
+            def get(self, name, default=None):
+                return probe.get(name, default) if "." not in name else default
+
+        ok, msg = QrzClient(Bus(), _S()).test_login()
+        if ok:
+            self.qrz_result.setText(tr("settings.qrz.ok_limited") if "non-subscriber" in msg.lower()
+                                    else tr("settings.qrz.ok", exp=msg))
+        else:
+            self.qrz_result.setText(tr("settings.wavelog.fail", msg=msg[:200]))
 
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(self, tr("settings.log.folder"), self.log_folder.text())
@@ -233,6 +294,8 @@ class SettingsDialog(QDialog):
         s.set("station.locator", self.locator.text().strip().upper())
         s.set("ui.language", self.language.currentText() or "en")
         s.set("ui.font_size", self.font_size.value())
+        s.set("update.auto", self.upd_auto.isChecked())
+        s.set("update.prerelease", self.upd_pre.isChecked())
         s.set("audio.device", self.device.currentData() or "")
         s.set("audio.channel", int(self.channel.currentData()))
         s.set("audio.samplerate", int(self.samplerate.currentData()))
@@ -247,11 +310,16 @@ class SettingsDialog(QDialog):
         s.set("log.line_pause_s", self.pause.value())
         s.set("qso.adif_file", self.adif_file.text().strip())
         s.set("qso.tx_pwr", self.tx_pwr.text().strip())
+        s.set("qso.worked_adif", self.worked_adif.text().strip())
+        s.set("keyer.tune_s", self.tune_s.value())
         s.set("cq.interval_s", self.cq_interval.value())
         s.set("wavelog.enabled", self.wl_enabled.isChecked())
         s.set("wavelog.url", self.wl_url.text().strip())
         s.set("wavelog.key", self.wl_key.text().strip())
         s.set("wavelog.station_profile_id", self.wl_profile.text().strip())
+        s.set("qrz.username", self.qrz_user.text().strip())
+        s.set("qrz.password", self.qrz_pw.text())
+        s.set("qrz.auto", self.qrz_auto.isChecked())
         for r in range(self.macro_table.rowCount()):
             key = self.macro_table.item(r, 0).text()
             s.set(f"macros.{key}.label", (self.macro_table.item(r, 1) or QTableWidgetItem("")).text().strip())

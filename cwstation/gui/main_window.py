@@ -17,6 +17,7 @@ from ..app import Station
 from ..core.adif import band_for
 from ..core.callsigns import find_callsigns
 from ..core.i18n import tr
+from .call_panel import CallPanel
 from .colors import station_color
 from .waterfall import WaterfallWidget
 
@@ -29,6 +30,7 @@ TX_PREFIX_W = 14          # "HH:MM:SSZ TX  "
 TX_REF_LAG_S = 1.0        # decoded sidetone may be timed slightly before the first echo
 NOTE_COLOR = QColor("#b9770e")
 MAX_BLOCKS = 5000
+TUNE_ARM_MS = 3000        # the second TUNE click must come within this time
 
 
 class BusBridge(QObject):
@@ -69,6 +71,15 @@ class MainWindow(QMainWindow):
 
         self._wpm_timer = QTimer(self, singleShot=True, interval=250)
         self._wpm_timer.timeout.connect(lambda: self.bus.publish("tx.set", wpm=self.wpm.value()))
+        # TUNE button state: released when the keyer reports idle, on STOP, or at the latest by this timer
+        self._tune_timer = QTimer(self, singleShot=True)
+        self._tune_timer.timeout.connect(lambda: self._set_tune_state("idle"))
+        self._tune_arm_timer = QTimer(self, singleShot=True, interval=TUNE_ARM_MS)
+        self._tune_arm_timer.timeout.connect(lambda: self._tune_state == "armed" and self._set_tune_state("idle"))
+        self._set_tune_state("idle")
+        # a callsign picked up from the decoded text is looked up once it has stayed put for a moment
+        self._lookup_timer = QTimer(self, singleShot=True, interval=1500)
+        self._lookup_timer.timeout.connect(self._auto_lookup)
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -82,6 +93,7 @@ class MainWindow(QMainWindow):
         self.sim_banner.setStyleSheet("background:#f4d03f;color:#000;font-weight:bold;padding:4px;")
         self.sim_banner.setVisible(self.station.sim_keyer)
         root.addWidget(self.sim_banner)
+        self._build_update_bar(root)
 
         top = QHBoxLayout()
         self.keyer_label = QLabel(tr("keyer.disconnected"))
@@ -126,6 +138,14 @@ class MainWindow(QMainWindow):
         self.band_label = QLabel(band_for(self.freq.value()) or "–")
         self.band_label.setMinimumWidth(38)
         top.addWidget(self.band_label)
+        # TUNE next to the frequency: first click arms it, a second click within TUNE_ARM_MS keys the carrier
+        self.tune_btn = QPushButton(tr("tx.tune"))
+        self.tune_btn.setFocusPolicy(Qt.NoFocus)
+        self.tune_btn.setMinimumWidth(78)
+        self.tune_btn.setToolTip(tr("tx.tune.tip", s=self.settings.get("keyer.tune_s", 5)))
+        self.tune_btn.clicked.connect(self._tune_clicked)
+        QShortcut(QKeySequence("Ctrl+T"), self, activated=self.tune_btn.click, context=Qt.ApplicationShortcut)
+        top.addWidget(self.tune_btn)
         root.addLayout(top)
 
         mono = QFontDatabase.systemFont(QFontDatabase.FixedFont)
@@ -140,7 +160,21 @@ class MainWindow(QMainWindow):
         self.wf_seconds.currentIndexChanged.connect(self._wf_seconds_changed)
         self.splitter = QSplitter(Qt.Vertical)
         self.splitter.addWidget(self.waterfall)
-        self.splitter.addWidget(self.stream)
+        # decoded text usually fills only the left part of the window: callsign details on the right
+        self.call_panel = CallPanel(self.settings)
+        self.call_panel.use_in_qso.connect(self._use_qrz_in_qso)
+        self.call_panel.lookup_requested.connect(lambda c: self.station.qrz.lookup(c))
+        self.call_split = QSplitter(Qt.Horizontal)
+        self.call_split.setHandleWidth(4)
+        self.call_split.addWidget(self.stream)
+        self.call_split.addWidget(self.call_panel)
+        self.call_split.setStretchFactor(0, 1)
+        self.call_split.setStretchFactor(1, 0)
+        self.call_split.setCollapsible(0, False)
+        csizes = self.settings.get("ui.call_splitter")
+        self.call_split.setSizes(csizes if isinstance(csizes, list) and len(csizes) == 2 else [700, 270])
+        self.call_panel.setVisible(bool(self.settings.get("ui.call_panel", True)))
+        self.splitter.addWidget(self.call_split)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         sizes = self.settings.get("ui.splitter")
@@ -242,7 +276,13 @@ class MainWindow(QMainWindow):
         act = QAction(tr("menu.settings"), self, triggered=self._open_settings, shortcut=QKeySequence("Ctrl+,"))
         m.addAction(act)
         m.addAction(QAction(tr("menu.open_log"), self, triggered=self._open_log))
+        self.call_panel_action = QAction(tr("menu.call_panel"), self, checkable=True,
+                                         checked=self.call_panel.isVisible(), shortcut=QKeySequence("Ctrl+K"))
+        self.call_panel_action.toggled.connect(self._toggle_call_panel)
+        m.addAction(self.call_panel_action)
         m.addSeparator()
+        m.addAction(QAction(tr("menu.check_updates"), self,
+                            triggered=lambda: self.station.updater.check(manual=True)))
         m.addAction(QAction(tr("menu.about"), self, triggered=self._about))
         m.addAction(QAction("Exit", self, triggered=self.close, shortcut=QKeySequence.Quit))
 
@@ -266,12 +306,46 @@ class MainWindow(QMainWindow):
         if m.get("text"):
             self.bus.publish("tx.send", text=m["text"])
 
+    def _set_tune_state(self, state: str) -> None:
+        """idle -> armed ("Sure?") -> on (carrier). Only the keyer's answer (tx.tuning) turns it on."""
+        self._tune_state = state
+        if state == "armed":
+            self.tune_btn.setText(tr("tx.tune.confirm"))
+            self.tune_btn.setStyleSheet("QPushButton{background:#f4d03f;color:#000;font-weight:bold;}")
+            self._tune_arm_timer.start()
+        elif state == "on":
+            self.tune_btn.setText(tr("tx.tune.on"))
+            self.tune_btn.setStyleSheet("QPushButton{background:#e74c3c;color:white;font-weight:bold;}")
+            self._tune_arm_timer.stop()
+        else:
+            self.tune_btn.setText(tr("tx.tune"))
+            self.tune_btn.setStyleSheet("")
+            self._tune_arm_timer.stop()
+            self._tune_timer.stop()
+
+    def _tune_clicked(self) -> None:
+        """TUNE needs two clicks; while tuning, one click stops it (FR-TX-08)."""
+        if self._tune_state == "on":
+            self._stop("tune")
+            self._set_tune_state("idle")
+        elif self._tune_state == "idle":
+            self._set_tune_state("armed")
+        else:
+            self._set_tune_state("idle")          # "on" only when the keyer accepted it (tx.tuning)
+            if self.cq_button.isChecked():
+                self.station.cq.stop("manual")
+            self.bus.publish("tx.tune")
+
     def _stop(self, source: str) -> None:
+        if getattr(self, "_tune_state", "idle") == "armed":
+            self._set_tune_state("idle")
         self.bus.publish("tx.stop", reason=source)
 
     def _freq_changed(self, value: float) -> None:
         self.band_label.setText(band_for(value) or "–")
         self.settings.set("qso.freq_mhz", round(value, 4))
+        if self.call_panel.call and self.call_panel.worked.isVisible():
+            self._show_worked(self.call_panel.call)        # "new on this band" follows the band
 
     def _log_qso(self) -> None:
         from .qso_dialog import QsoDialog
@@ -290,8 +364,37 @@ class MainWindow(QMainWindow):
         href = self.stream.anchorAt(event.pos())
         QTextEdit.mouseReleaseEvent(self.stream, event)
         if href.startswith("call:"):
-            self.station.qso.set_field("call", href[5:])
-            self.statusBar().showMessage(tr("qso.call_set", call=href[5:]), 4000)
+            call = href[5:]
+            self.station.qso.set_field("call", call)
+            self.statusBar().showMessage(tr("qso.call_set", call=call), 4000)
+            if not self.call_panel.isVisible():
+                self.call_panel_action.setChecked(True)
+            self.station.qrz.lookup(call)
+
+    def _show_worked(self, call: str) -> None:
+        if not call:
+            return
+        try:
+            qsos = self.station.worked.lookup(call)
+        except Exception:  # noqa: BLE001  a broken log file must not break the window
+            return
+        self.call_panel.show_worked(qsos, band_for(self.freq.value()))
+
+    def _toggle_call_panel(self, on: bool) -> None:
+        self.call_panel.setVisible(on)
+        self.settings.set("ui.call_panel", bool(on))
+
+    def _auto_lookup(self) -> None:
+        call = self.station.qso.fields().get("call", "")
+        if call and call != self.call_panel.call and self.call_panel.isVisible():
+            self.station.qrz.lookup(call)
+
+    def _use_qrz_in_qso(self, values: dict) -> None:
+        """'Use in QSO': copy the QRZ name, QTH and locator into the QSO fields."""
+        for name in ("call", "name", "qth", "gridsquare"):
+            if values.get(name):
+                self.station.qso.set_field(name, values[name])
+        self.statusBar().showMessage(tr("qrz.used", call=values.get("call", "")), 4000)
 
     def _open_settings(self) -> None:
         from .settings_dialog import SettingsDialog
@@ -305,6 +408,9 @@ class MainWindow(QMainWindow):
                 m = self.settings.get(f"macros.{key}") or {}
                 btn.setText(f"{key}  {m.get('label', '')}")
                 btn.setToolTip(m.get("text", ""))
+            self.tune_btn.setToolTip(tr("tx.tune.tip", s=self.settings.get("keyer.tune_s", 5)))
+            if self.call_panel.call:
+                self._show_worked(self.call_panel.call)
             self.wpm.blockSignals(True)
             self.wpm.setValue(int(self.settings.get("keyer.wpm", 20)))
             self.wpm.blockSignals(False)
@@ -313,6 +419,135 @@ class MainWindow(QMainWindow):
         folder = self.settings.log_folder()
         folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    # ------------------------------------------------------------------ updates (FR-CORE-10)
+    def _build_update_bar(self, root) -> None:
+        self.update_bar = QFrame()
+        self.update_bar.setObjectName("updateBar")
+        self.update_bar.setStyleSheet("#updateBar{background:#e8f1fb;border:1px solid #b9d3ee;border-radius:4px;}"
+                                      "#updateBar QLabel{background:transparent;}")
+        lay = QHBoxLayout(self.update_bar)
+        lay.setContentsMargins(10, 3, 6, 3)
+        self.update_label = QLabel()
+        lay.addWidget(self.update_label, 1)
+        self.update_progress = QProgressBar(minimum=0, maximum=100, textVisible=True)
+        self.update_progress.setFixedWidth(180)
+        self.update_progress.setVisible(False)
+        lay.addWidget(self.update_progress)
+        self.update_notes_btn = QPushButton(tr("update.notes"))
+        self.update_notes_btn.clicked.connect(self._update_notes)
+        lay.addWidget(self.update_notes_btn)
+        self.update_btn = QPushButton(tr("update.now"))
+        self.update_btn.setStyleSheet("QPushButton{font-weight:bold;}")
+        self.update_btn.clicked.connect(self._update_clicked)
+        lay.addWidget(self.update_btn)
+        self.update_skip_btn = QPushButton(tr("update.skip"))
+        self.update_skip_btn.clicked.connect(self._update_skip)
+        lay.addWidget(self.update_skip_btn)
+        self.update_close_btn = QPushButton("✕")
+        self.update_close_btn.setFlat(True)
+        self.update_close_btn.setFixedWidth(28)
+        self.update_close_btn.setToolTip(tr("update.later"))
+        self.update_close_btn.clicked.connect(self._update_later)
+        lay.addWidget(self.update_close_btn)
+        for b in (self.update_notes_btn, self.update_btn, self.update_skip_btn, self.update_close_btn):
+            b.setFocusPolicy(Qt.NoFocus)
+        self.update_bar.setVisible(False)
+        self._update: dict = {}
+        self._update_state = "idle"          # idle | offered | downloading | ready
+        root.addWidget(self.update_bar)
+
+    def _on_update_message(self, t: str, m: dict) -> None:
+        if t == "update.available":
+            self._update = m
+            self._update_state = "offered"
+            size = f"{m.get('size', 0) / 1e6:.0f} MB" if m.get("size") else ""
+            self.update_label.setText(tr("update.available", version=m.get("version", ""), size=size))
+            self.update_btn.setText(tr("update.now") if m.get("one_click") else tr("update.download_page"))
+            self.update_btn.setToolTip("" if m.get("one_click") else tr(f"update.why.{m.get('reason', 'source')}"))
+            for b in (self.update_btn, self.update_notes_btn, self.update_skip_btn, self.update_close_btn):
+                b.setVisible(True)
+                b.setEnabled(True)
+            self.update_progress.setVisible(False)
+            self.update_bar.setVisible(True)
+        elif t == "update.none" and m.get("manual"):
+            QMessageBox.information(self, APP_NAME, tr("update.none", version=__version__))
+        elif t == "update.error":
+            if self._update_state == "downloading":
+                self._update_state = "offered"
+                self.update_progress.setVisible(False)
+                self.update_btn.setEnabled(True)
+                self.update_close_btn.setEnabled(True)
+                self.update_btn.setText(tr("update.retry"))
+                self.update_label.setText(tr("update.failed", msg=m.get("msg", "")))
+            elif m.get("manual"):
+                QMessageBox.warning(self, APP_NAME, tr("update.check_failed", msg=m.get("msg", "")))
+        elif t == "update.progress":
+            total = int(m.get("total") or 0)
+            if total:
+                self.update_progress.setValue(int(100 * int(m.get("done", 0)) / total))
+        elif t == "update.ready":
+            self._update_state = "ready"
+            self.update_label.setText(tr("update.restarting", version=m.get("version", "")))
+            self.update_progress.setVisible(False)
+            if self._tx_busy or self._tune_state == "on":     # never restart in the middle of a transmission
+                self._stop("update")
+            QTimer.singleShot(300, self._install_update)
+
+    def _update_clicked(self) -> None:
+        m = self._update
+        if not m:
+            return
+        if not m.get("one_click"):
+            QDesktopServices.openUrl(QUrl(m.get("page", "")))
+            return
+        if self._tx_busy or self._tune_state == "on" or self.cq_button.isChecked():
+            self.statusBar().showMessage(tr("update.wait_tx"), 6000)
+            return
+        call = self.station.qso.fields().get("call", "")
+        if call and QMessageBox.question(self, APP_NAME, tr("update.qso_open", call=call)) != QMessageBox.Yes:
+            return
+        if not self.station.updater.start_download():
+            return
+        self._update_state = "downloading"
+        self.update_label.setText(tr("update.downloading", version=m.get("version", "")))
+        self.update_progress.setValue(0)
+        self.update_progress.setVisible(True)
+        self.update_btn.setEnabled(False)
+        self.update_skip_btn.setVisible(False)
+        self.update_notes_btn.setVisible(False)
+        self.update_close_btn.setEnabled(False)
+
+    def _install_update(self) -> None:
+        from ..core.settings import config_dir
+
+        try:
+            self.station.updater.install_and_restart(config_dir() / "update.log")
+        except Exception as e:  # noqa: BLE001
+            self._on_update_message("update.error", {"msg": str(e)})
+            self._update_state = "offered"
+            return
+        self.close()                      # STOP, settings saved; the helper swaps the folder and restarts
+
+    def _update_notes(self) -> None:
+        m = self._update
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("update.notes_title", version=m.get("version", "")))
+        box.setText(m.get("notes") or tr("update.no_notes"))
+        box.setTextFormat(Qt.MarkdownText)
+        open_btn = box.addButton(tr("update.open_page"), QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Close)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl(m.get("page", "")))
+
+    def _update_skip(self) -> None:
+        self.settings.set("update.skip", self._update.get("version", ""))
+        self._update_later()
+
+    def _update_later(self) -> None:
+        self.update_bar.setVisible(False)
+        self._update_state = "idle"
 
     def _about(self) -> None:
         QMessageBox.about(self, APP_NAME, tr("about.text", version=__version__))
@@ -484,6 +719,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ bus
     def _on_message(self, m: dict) -> None:
         t = m["type"]
+        if t.startswith("update."):
+            self._on_update_message(t, m)
+            return
         if t == "rx.spectrum":
             self.waterfall.add_spectrum(m)
         elif t == "rx.text":
@@ -523,20 +761,28 @@ class MainWindow(QMainWindow):
         elif t == "tx.queued":
             self._queued += m.get("text", "")
             self._update_queue_label()
+        elif t == "tx.tuning":
+            self._set_tune_state("on")
+            self._tune_timer.start(int(m.get("ms", 5000)) + 1500)
+            self._note(tr("tx.tuning", s=f"{m.get('ms', 0) / 1000:g}"))
         elif t == "tx.state":
+            if not m.get("busy") and self._tune_state == "on":
+                self._set_tune_state("idle")
             self._tx_busy = bool(m.get("busy"))
             self._set_tx_lamp(self._tx_busy)
             if not self._tx_busy:
                 self._queued = ""
                 self._update_queue_label()
         elif t == "tx.stopped":
+            if self._tune_state == "on":
+                self._set_tune_state("idle")
             had = bool(self._queued.strip()) or self._tx_busy
             self._queued = ""
             self._update_queue_label()
             self._set_tx_lamp(False)
             reason = m.get("reason", "")
             if had and reason not in ("shutdown",) and not reason.isupper():  # faults have their own note
-                if reason in ("", "host", "button", "esc", "ota"):
+                if reason in ("", "host", "button", "esc", "ota", "tune"):
                     self._note(tr("tx.stopped"))
                 else:
                     self._note(tr("tx.stopped.reason", reason=tr(f"tx.stop_reason.{reason}")))
@@ -548,7 +794,8 @@ class MainWindow(QMainWindow):
             text = {"not_connected": tr("tx.not_connected"),
                     "dropped_chars": tr("tx.dropped", chars=m.get("detail", "")),
                     "no_callsign": tr("tx.no_callsign"),
-                    "no_call": tr("tx.no_call")}.get(code, code)
+                    "no_call": tr("tx.no_call"),
+                    "tune_busy": tr("tx.tune_busy")}.get(code, code)
             self.statusBar().showMessage(text, 8000)
             if code in ("not_connected", "no_callsign", "no_call"):
                 self._note(text)
@@ -571,14 +818,26 @@ class MainWindow(QMainWindow):
             for name, edit in self.qso_fields.items():
                 if not edit.hasFocus() and edit.text() != f.get(name, ""):
                     edit.setText(f.get(name, ""))
+            if f.get("call") and f["call"] != self.call_panel.call and self.settings.get("qrz.auto", True):
+                self._lookup_timer.start()
+        elif t == "qrz.result":
+            self.call_panel.show_result(m)
+            if m.get("state") != "busy":
+                self._show_worked(m.get("call", ""))
         elif t == "qso.logged":
             self._note(tr("qso.logged", call=m.get("call", ""), path=m.get("path", "")))
+            if self.call_panel.call:
+                self._show_worked(self.call_panel.call)
             for edit in self.qso_fields.values():
                 edit.clear()
         elif t == "wavelog.status":
             state = m.get("state")
             if state == "sent":
                 self.statusBar().showMessage(tr("wavelog.sent", call=m.get("call", "")), 6000)
+            elif state == "duplicate":
+                self.statusBar().showMessage(tr("wavelog.duplicate", call=m.get("call", "")), 6000)
+            elif state == "rejected":
+                self._note(tr("wavelog.rejected", call=m.get("call", ""), msg=m.get("msg", "")[:200]))
             elif state == "error":
                 self.statusBar().showMessage(tr("wavelog.error", msg=m.get("msg", ""),
                                                 pending=m.get("pending", 0)), 10000)
@@ -603,5 +862,7 @@ class MainWindow(QMainWindow):
         g = self.geometry()
         self.settings.set("ui.window", [g.x(), g.y(), g.width(), g.height()])
         self.settings.set("ui.splitter", self.splitter.sizes())
+        if self.call_panel.isVisible():
+            self.settings.set("ui.call_splitter", self.call_split.sizes())
         self.station.shutdown()  # STOP before the window goes away (SR-05)
         event.accept()

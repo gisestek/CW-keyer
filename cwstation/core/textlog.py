@@ -42,6 +42,7 @@ class TextLog:
         bus.subscribe("rx.text", self._on_rx)
         bus.subscribe("tx.echo", self._on_echo)
         bus.subscribe("tx.stopped", self._on_tx_stopped)
+        bus.subscribe("tx.tuning", self._on_tuning)
 
     # -- events --
     def _on_rx(self, msg: dict) -> None:
@@ -69,6 +70,13 @@ class TextLog:
     def _on_echo(self, msg: dict) -> None:
         ch = msg.get("ch", "")  # "<" and ">" kept: prosigns are logged as <SK>
         self._append("TX", ch, self._clock(), sep="")
+
+    def _on_tuning(self, msg: dict) -> None:
+        """A carrier was keyed for tuning: it belongs in the station log too."""
+        with self._lock:
+            if self._dir is not None:
+                self._close_line()
+            self._write(self._clock(), "TX", f"[TUNE {msg.get('ms', 0) / 1000:g} s]")
 
     def _on_tx_stopped(self, msg: dict) -> None:
         with self._lock:

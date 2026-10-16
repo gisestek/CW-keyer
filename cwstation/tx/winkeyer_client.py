@@ -50,6 +50,7 @@ CMD_WEIGHT = 0x03         # <03><10..90>
 CMD_CLEAR = 0x0A          # clears the buffer and cuts the character being sent
 CMD_MODE = 0x0E           # <0E><mode register>
 CMD_KEY_IMMEDIATE = 0x0B  # <0B><1|0> tune
+TUNE_MAX_MS = 10000       # same cap as the WiFi keyer (FR-TX-08)
 CMD_MERGE = 0x1B          # <1B><c1><c2> prosign: two letters sent as one
 
 MODE_SERIAL_ECHO = 0x04   # bit 2: send every character back after it has been keyed
@@ -98,6 +99,7 @@ class WinkeyerClient:
         self._running = False
         self._thread: threading.Thread | None = None
         self._busy = False
+        self._tune_timer: threading.Timer | None = None
         self.fw = "winkeyer"
         self.version = ""
         self.cfg: dict = {}
@@ -135,8 +137,7 @@ class WinkeyerClient:
                     out += bytes([CMD_WEIGHT, max(10, min(90, int(obj["weight"])))])
                 return self._write(bytes(out)) if out else True
             if cmd == "tune":
-                on = 1 if obj.get("on", obj.get("seconds", 0)) else 0
-                return self._write(bytes([CMD_KEY_IMMEDIATE, on]))
+                return self.tune(int(obj.get("ms", 0)))
             if cmd == "ping":
                 return True          # no equivalent; the keyer has no heartbeat
         except Exception as e:  # noqa: BLE001
@@ -144,11 +145,50 @@ class WinkeyerClient:
             self._drop(str(e))
         return False
 
+    def tune(self, ms: int) -> bool:
+        """Key down for `ms` with WinKeyer's key-immediate command (FR-TX-08).
+
+        WinKeyer has no time limit of its own for this, so the key is released
+        from here: by a timer, by STOP and on shutdown. If this program crashes
+        during TUNE the carrier stays on until the keyer is unplugged, which is
+        why the length is capped at TUNE_MAX_MS.
+        """
+        ms = max(0, min(TUNE_MAX_MS, int(ms)))
+        if not ms or not self.connected or self._busy:
+            return False
+        self._cancel_tune()
+        if not self._write(bytes([CMD_KEY_IMMEDIATE, 1])):
+            return False
+        timer = threading.Timer(ms / 1000, self._tune_off)
+        timer.daemon = True
+        timer.args = (timer,)
+        with self._lock:
+            self._tune_timer = timer
+        timer.start()
+        self.bus.publish("tx.state", busy=True, key=True, pending=0)
+        return True
+
+    def _cancel_tune(self) -> None:
+        with self._lock:
+            timer, self._tune_timer = self._tune_timer, None
+        if timer is not None:
+            timer.cancel()
+
+    def _tune_off(self, timer: threading.Timer) -> None:
+        """TUNE time is up: release the key, unless STOP or a new TUNE already took over."""
+        with self._lock:
+            if self._tune_timer is not timer:
+                return
+            self._tune_timer = None
+        self._write(bytes([CMD_KEY_IMMEDIATE, 0]))
+        self.bus.publish("tx.state", busy=False, key=False, pending=0)
+
     def stop_now(self, timeout: float = 0.5) -> bool:
-        """STOP: clear the buffer, which also cuts the character being sent (SR-01)."""
+        """STOP: release TUNE and clear the buffer, which also cuts the character being sent (SR-01)."""
         if not self.connected:
             return False
-        ok = self._write(bytes([CMD_CLEAR]))
+        self._cancel_tune()
+        ok = self._write(bytes([CMD_KEY_IMMEDIATE, 0, CMD_CLEAR]))
         if ok:
             self._busy = False
             self.bus.publish("tx.stopped", reason="host")
@@ -169,8 +209,9 @@ class WinkeyerClient:
             self._running = False
             self._close_port()
             return
+        self._cancel_tune()
         if self.connected:
-            self._write(bytes([CMD_CLEAR]))
+            self._write(bytes([CMD_KEY_IMMEDIATE, 0, CMD_CLEAR]))
             self._write(bytes([ADMIN, ADMIN_CLOSE]))
         self._running = False
         self._close_port()
