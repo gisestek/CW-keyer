@@ -46,7 +46,7 @@ def make_zip(version="0.7.0", extra: dict | None = None) -> bytes:
 
 
 def release(tag, base, asset_bytes=b"", prerelease=False, draft=False, digest=True, name=None):
-    asset_name = name or f"CWStation-{tag.lstrip('v')}-win64.zip"
+    asset_name = name or f"CWStation-{tag.lstrip('v')}-{up.ASSET_SUFFIX}"
     return {"tag_name": tag, "name": tag, "draft": draft, "prerelease": prerelease, "body": f"## {tag}\n- new things",
             "html_url": f"https://github.com/{up.REPO}/releases/tag/{tag}",
             "assets": [{"name": asset_name, "size": len(asset_bytes),
@@ -62,6 +62,18 @@ def test_versions():
     assert not up.is_newer("0.7.0-rc1", "0.7.0")
 
 
+def test_platform_asset_names(monkeypatch):
+    import platform
+
+    monkeypatch.setattr(up.sys, "platform", "win32")
+    assert up.platform_asset_suffix() == "win64.zip"
+    monkeypatch.setattr(up.sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    assert up.platform_asset_suffix() == "linux-x64.tar.gz"
+    monkeypatch.setattr(platform, "machine", lambda: "aarch64")
+    assert up.platform_asset_suffix() == "linux-arm64.tar.gz"
+
+
 def test_pick_release(monkeypatch):
     base = up.DOWNLOAD_PREFIX
     rels = [release("0.6.0", base), release("v0.8.0", base, draft=True), release("v0.7.1", base, prerelease=True),
@@ -73,7 +85,7 @@ def test_pick_release(monkeypatch):
     foreign = up.pick_release([release("v0.7.0", "https://evil.example/")], "0.6.0")
     assert foreign["url"] == ""                                   # never download from elsewhere
     assert up.pick_release([release("v0.7.0", base, digest=False)], "0.6.0")["sha256"] == ""
-    assert up.pick_release([release("v0.7.0", base, name="CWStation-0.6.0-win64.zip")], "0.6.0") is None
+    assert up.pick_release([release("v0.7.0", base, name=f"CWStation-0.6.0-{up.ASSET_SUFFIX}")], "0.6.0") is None
 
 
 # ---------------------------------------------------------------- fake GitHub
@@ -109,9 +121,10 @@ def github(monkeypatch):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_port}/dl/"
     monkeypatch.setattr(up, "DOWNLOAD_PREFIX", base)
+    monkeypatch.setattr(up, "__version__", "0.6.0")   # tests do not depend on the real version number
     data = make_zip()
     FakeGitHub.releases = [release("v0.7.0", base, data), release("0.6.0", base, b"x")]
-    FakeGitHub.files = {"/dl/v0.7.0/CWStation-0.7.0-win64.zip": data}
+    FakeGitHub.files = {f"/dl/v0.7.0/CWStation-0.7.0-{up.ASSET_SUFFIX}": data}
     FakeGitHub.hits = 0
     yield srv, base, data
     srv.shutdown()

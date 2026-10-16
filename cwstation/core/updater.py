@@ -1,7 +1,8 @@
 """Update check and one-click update from GitHub releases (FR-CORE-10).
 
 Check:   GET https://api.github.com/repos/<REPO>/releases  -> newest release newer than __version__
-         that has a CWStation-<version>-win64.zip asset with a sha256 digest.
+         that has this platform's file (CWStation-<version>-win64.zip, -linux-x64.tar.gz, …) with a
+         sha256 digest. One-click update is Windows only; elsewhere the bar opens the release page.
 Update:  1. download the zip to %APPDATA%\\CWStation\\updates and verify its SHA-256
          2. unpack it next to the program folder (<folder>.new)
          3. start a small PowerShell helper and close the program normally (STOP first, SR-05)
@@ -35,6 +36,20 @@ REPO = "gisestek/CW-keyer"
 API_URL = f"https://api.github.com/repos/{REPO}/releases"
 DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 EXE_NAME = "CWStation.exe"
+
+
+def platform_asset_suffix() -> str:
+    """Release file ending for this computer: 'win64.zip', 'linux-x64.tar.gz', 'linux-arm64.tar.gz'."""
+    if sys.platform == "win32":
+        return "win64.zip"
+    import platform
+
+    machine = platform.machine().lower()
+    arch = {"x86_64": "x64", "amd64": "x64", "aarch64": "arm64", "arm64": "arm64"}.get(machine, machine)
+    return f"linux-{arch}.tar.gz" if sys.platform.startswith("linux") else f"{sys.platform}-{arch}.zip"
+
+
+ASSET_SUFFIX = platform_asset_suffix()
 CHECK_EVERY_S = 24 * 3600
 TIMEOUT_S = 20
 CHUNK = 256 * 1024
@@ -72,7 +87,7 @@ def pick_release(releases: list[dict], current: str = __version__, prerelease: b
         version = (r.get("tag_name") or "").lstrip("vV")
         if not is_newer(version, current):
             continue
-        wanted = f"CWStation-{version}-win64.zip"            # zip must match the tag, or updates would loop
+        wanted = f"CWStation-{version}-{ASSET_SUFFIX}"       # file must match the tag, or updates would loop
         asset = next((a for a in r.get("assets") or [] if a.get("name") == wanted), None)
         if asset is None:
             continue

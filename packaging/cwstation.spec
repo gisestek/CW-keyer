@@ -41,6 +41,24 @@ a = Analysis(
     excludes=excludes,
     noarchive=False,
 )
+if sys.platform.startswith("linux"):
+    # Linux: use the system's sound stack (PortAudio -> ALSA / PipeWire / PulseAudio). Bundled copies of
+    # these are found first and then fail to load the system's ALSA plugins, so no sound devices show up.
+    # Also leave out Qt parts the program never uses (QML, virtual keyboard, PDF, GTK theme integration
+    # that drags in GTK itself and clashes with the system's GTK).
+    LINUX_DROP = (
+        "libasound.so", "libjack.so", "libportaudio.so", "libpulse", "libpipewire",
+        "libQt6Quick", "libQt6Qml", "libQt6VirtualKeyboard", "libQt6Pdf",
+        "libqtvirtualkeyboardplugin", "libqpdf.so", "libqgtk3.so",
+        "libgtk-3.so", "libgdk-3.so", "libatk-", "libatk-bridge", "libgdk_pixbuf", "libpango", "libcairo",
+    )
+
+    def _keep(entry):
+        return not Path(entry[0]).name.startswith(LINUX_DROP)
+
+    a.binaries = [b for b in a.binaries if _keep(b)]
+    a.datas = [d for d in a.datas if _keep(d)]
+
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz,

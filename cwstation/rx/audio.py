@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import sys
 import threading
 import time
 from pathlib import Path
@@ -13,8 +14,13 @@ log = logging.getLogger(__name__)
 
 
 def _sd():
-    import sounddevice as sd  # imported lazily: PortAudio may be missing on a dev machine
-
+    try:
+        import sounddevice as sd  # imported lazily: PortAudio may be missing on a dev machine
+    except OSError as e:
+        if sys.platform.startswith("linux"):
+            # Linux uses the system's PortAudio so that it works with the system's ALSA / PipeWire setup
+            raise OSError("PortAudio library not found – install it with: sudo apt install libportaudio2") from e
+        raise
     return sd
 
 

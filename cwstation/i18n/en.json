@@ -181,7 +181,7 @@
   "update.wait_tx": "Update after the transmission (and CQ repeat) has ended.",
   "update.qso_open": "The QSO with {call} has not been logged. Update and restart anyway?",
   "update.why.source": "Running from source code: update with git pull.",
-  "update.why.platform": "One-click update works on Windows only.",
+  "update.why.platform": "One-click update is Windows only for now: download the new version and unpack it over the old one.",
   "update.why.readonly": "The program folder is not writable (for example in Program Files). Move it to e.g. C:\\CWStation to update with one click.",
   "update.why.no_checksum": "The release has no checksum, so it is not installed automatically.",
   "settings.update.auto": "Check for updates at start-up",

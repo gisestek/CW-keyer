@@ -15,7 +15,7 @@ Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [Dee
 | `hardware/` | Kytkentäkaaviot |
 | `rx/deepcw/` | M0-kokeilun komentorivityökalut: tulkki, benchmark, vertailu |
 | `docs/` | Vaatimusmäärittely, tämä käyttöohje, viestiskeemat (`messages.md`) |
-| `packaging/` | Windows-paketointi (PyInstaller) ja GitHub Actions -rakennus |
+| `packaging/` | Windows- ja Linux-paketointi (PyInstaller) |
 | `tests/` | Automaattiset testit |
 | `third_party/deepcw-engine/` | DeepCW-malli (AGPL-3.0) |
 
@@ -159,15 +159,35 @@ Skripti tekee seuraavat, 5–15 min:
 4. Ajaa valmiin ohjelman itsetestin: ikkuna näkyy noin 15 s, ja testi tarkistaa, että tulkinta ja lähetys toimivat.
 5. Pakkaa tuloksen tiedostoksi `dist\CWStation-0.6.0-win64.zip`.
 
-Vaihtoehto: GitHub Actions rakentaa saman zipin. Ota se käyttöön kerran siirtämällä `packaging/github-build-windows.yml` polkuun `.github/workflows/build-windows.yml` ja pushaamalla. Rakennus käynnistyy Actions-välilehdeltä (*Run workflow*) tai versiotagista.
+Vaihtoehto: GitHub Actions (`.github/workflows/build.yml`) rakentaa saman zipin ja lisäksi Linux-version. Rakennus käynnistyy Actions-välilehdeltä (*Run workflow*) tai versiotagista.
+
+## Rakentaminen (Linux)
+
+Ubuntu 22.04 tai uudempi, x86-64 tai ARM64 (esim. Raspberry Pi 4/5 64-bittisellä käyttöjärjestelmällä). Kerran:
+
+```
+sudo apt install python3-venv curl libportaudio2 libxcb-cursor0
+```
+
+Projektikansiossa:
+
+```
+bash packaging/build_linux.sh            # tai: bash packaging/build_linux.sh --skip-tests
+```
+
+Skripti tekee samat vaiheet kuin Windows-versio (oma ympäristö `.venv-build-linux`, testit, PyInstaller, itsetesti ilman ikkunaa) ja pakkaa tuloksen tiedostoksi `dist/CWStation-<versio>-linux-x64.tar.gz` (ARMilla `-linux-arm64`). Rakenna vanhimmalla Linuxilla, jota haluat tukea: tulos toimii sillä ja uudemmilla, ei vanhemmilla. GitHub rakentaa siksi Ubuntu 22.04:llä.
+
+Ohjelma käyttää järjestelmän omaa PortAudio-kirjastoa ja ääniasetuksia (ALSA, PipeWire tai PulseAudio). Niitä ei pakata mukaan, koska pakattu ALSA-kopio ei löydä järjestelmän ääniliitännäisiä, jolloin äänilaitteita ei näy lainkaan.
+
+Lähdekoodista ajo ilman rakentamista: `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt && python -m cwstation`.
 
 ### Uuden version julkaisu
 
-Asennetut ohjelmat löytävät uuden version vain, jos GitHub-julkaisussa on liitteenä täsmälleen `CWStation-<versio>-win64.zip` ja versio on sama kuin tagissa. Helpoin tapa:
+Asennetut ohjelmat löytävät uuden version vain, jos GitHub-julkaisussa on liitteenä täsmälleen `CWStation-<versio>-win64.zip` (Linuxilla `CWStation-<versio>-linux-x64.tar.gz`) ja versio on sama kuin tagissa. Helpoin tapa:
 
 1. Nosta versionumero tiedostossa `cwstation/__init__.py` (`__version__ = "0.7.0"`) ja commitoi.
 2. `git tag v0.7.0` ja `git push origin main v0.7.0`.
-3. GitHub Actions ajaa testit, rakentaa zipin, ajaa itsetestin ja julkaisee releasen zip liitteenä. 0.x-versiot merkitään testiversioiksi (*pre-release*), ja julkaisutiedotteeseen kootaan commitit edellisestä versiosta. Tiedotetta voi muokata GitHubissa, ja ohjelman *What's new* näyttää sen.
+3. GitHub Actions ajaa testit, rakentaa Windows-zipin ja Linux-paketin, ajaa molempien itsetestit ja julkaisee releasen, jonka liitteinä ovat molemmat. Jos vain Linux-rakennus epäonnistuu, release julkaistaan silti Windows-zipillä. 0.x-versiot merkitään testiversioiksi (*pre-release*), ja julkaisutiedotteeseen kootaan commitit edellisestä versiosta. Tiedotetta voi muokata GitHubissa, ja ohjelman *What's new* näyttää sen.
 
 Jos tagi ja `__version__` eivät täsmää, rakennus pysähtyy heti. Muuten asennetut ohjelmat tarjoaisivat samaa päivitystä loputtomasti. Käsin tehtävässä julkaisussa pätee sama: zipin nimen ja tagin version on oltava samat.
 
@@ -184,6 +204,16 @@ Jos tagi ja `__version__` eivät täsmää, rakennus pysähtyy heti. Muuten asen
    - **QSO (0.3.0):** ADIF-tiedoston polku (tyhjä = `Documents\CWStation\logs\cwstation.adi`), teho watteina ja CQ-toiston väli.
    - **Wavelog (0.3.0):** rasti *Enabled*, palvelimen osoite ilman `/api`-osaa (esim. `https://wavelog.example.com`), API-avain ja `station_profile_id` (Wavelogissa *Station Locations* -sivulla). Paina *Test connection*: se tarkistaa osoitteen, API-avaimen ja station profilen Wavelogin koeajotilassa (*dry run*), eikä lokiin tallennu mitään. (Ennen tätä korjausta testi tallensi QSO:n tunnuksella `TEST` 1.1.1970. Jos sellainen on Wavelogissa, sen voi poistaa.)
 4. Keyerin tilan pitää muuttua vihreäksi (*Keyer: connected*), ja tilarivillä pitää näkyä äänitaso.
+
+### Asennus Linuxiin
+
+1. Asenna kirjastot: `sudo apt install libportaudio2 libxcb-cursor0`.
+2. Pura paketti esimerkiksi kotikansioon: `tar xzf CWStation-0.7.0-linux-x64.tar.gz -C ~/`, jolloin ohjelma on `~/CWStation/CWStation`.
+3. Valikkoon: `~/CWStation/install-menu-entry.sh` lisää *CW Station* -kuvakkeen sovellusvalikkoon (poisto: `--remove`). Skripti kertoo myös, jos jotain puuttuu.
+4. WinKeyer USB-sarjaportissa: `sudo usermod -aG dialout $USER`, kirjaudu ulos ja takaisin. Portti on yleensä `/dev/ttyUSB0` tai `/dev/ttyACM0`.
+5. Asetukset ovat kansiossa `~/.config/CWStation`, lokit oletuksena `~/Documents/CWStation/logs` (tai `~/CWStation/logs`, jos *Documents*-kansiota ei ole).
+6. Äänilaitteet näkyvät Linuxilla nimillä kuten *USB PnP Sound Device: Audio (hw:2,0) (ALSA)*. PipeWire- tai PulseAudio-työpöydällä kokeile myös *pipewire*- tai *pulse*-laitetta, jos suora `hw:`-laite on toisen ohjelman varaama.
+7. Päivitykset: sininen palkki kertoo uudesta versiosta, mutta yhden klikkauksen asennus toimii toistaiseksi vain Windowsilla. Linuxilla *Download page* avaa julkaisusivun: pura uusi paketti vanhan päälle.
 
 ## Käyttöönottotesti asemalla
 
