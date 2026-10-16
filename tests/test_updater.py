@@ -340,7 +340,9 @@ def test_gui_update_bar(qapp, tmp_path, github, monkeypatch):
     win.show()
     assert not win.update_bar.isVisible()
 
-    # running from source: the bar only offers the download page
+    # running from source: the bar only offers the download page (simulated, so the test is the same on
+    # Windows, where one-click update would otherwise be available)
+    monkeypatch.setattr(up, "can_self_update", lambda f: (False, "source"))
     station.updater.check(wait=True)
     qapp.processEvents()
     assert win.update_bar.isVisible() and "0.7.0" in win.update_label.text()
