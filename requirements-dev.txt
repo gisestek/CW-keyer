@@ -1,3 +1,4 @@
 -r requirements.txt
 pytest>=8
+pytest-github-actions-annotate-failures>=0.2  # failing tests as annotations on GitHub, no effect elsewhere
 pyinstaller>=6.6

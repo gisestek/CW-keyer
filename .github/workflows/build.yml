@@ -1,6 +1,7 @@
 # Builds CW Station for Windows and Linux. A pushed version tag (v0.7.1 or 0.7.1) also publishes a
 # GitHub release with both files attached; the program's update check (FR-CORE-10) looks for them.
-# Lives in .github/workflows/build.yml (replaces the older build-windows.yml).
+# Lives in .github/workflows/build.yml. Failing tests show up as annotations on the run page
+# (pytest-github-actions-annotate-failures in requirements-dev.txt).
 name: build
 on:
   push:
@@ -13,8 +14,8 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Tag must match cwstation.__version__
@@ -27,7 +28,7 @@ jobs:
       - name: Build (tests, PyInstaller, self-test, zip)
         shell: pwsh
         run: ./packaging/build_windows.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: CWStation-win64
           path: dist/CWStation-*-win64.zip
@@ -36,8 +37,8 @@ jobs:
     # Built on the oldest supported Ubuntu: the result also runs on newer ones (22.04, 24.04, ...).
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Tag must match cwstation.__version__
@@ -56,7 +57,7 @@ jobs:
         run: bash packaging/build_linux.sh
         env:
           PYTHON: python
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: CWStation-linux-x64
           path: dist/CWStation-*-linux-*.tar.gz
@@ -67,11 +68,11 @@ jobs:
     if: always() && startsWith(github.ref, 'refs/tags/') && needs.windows.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           prerelease: ${{ startsWith(github.ref_name, '0.') || startsWith(github.ref_name, 'v0.') || contains(github.ref_name, '-') }}
