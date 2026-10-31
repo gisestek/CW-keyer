@@ -64,8 +64,13 @@ def main(argv: list[str] | None = None) -> int:
     i18n.load(settings.get("ui.language", "en"))
     log.info("%s %s starting, settings=%s, log=%s", APP_NAME, __version__, settings.path, log_path)
 
+    from .gui.icon import app_icon, set_windows_app_id
+
+    set_windows_app_id()
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
+    app.setDesktopFileName("cwstation")  # matches the Linux menu entry, so the taskbar shows its icon
+    app.setWindowIcon(app_icon())
     station = Station(settings, wav=args.wav, sim_keyer=args.sim_keyer)
     win = MainWindow(station)
     app.aboutToQuit.connect(station.shutdown)

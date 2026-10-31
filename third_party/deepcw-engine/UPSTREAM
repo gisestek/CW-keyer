@@ -1,0 +1,12 @@
+# Where the files in this folder come from. Replace this file whenever the model is updated;
+# .github/workflows/deepcw-upstream.yml checks it weekly against upstream and opens an issue on changes.
+repo=e04/deepcw-engine
+commit=8e264d243bbd4467bd19f3f28292219405b47e0e
+date=2026-06-16
+license=AGPL-3.0-only
+
+# sha256 of the copied files (check by hand:  grep -E '^[0-9a-f]{64} ' UPSTREAM | sha256sum -c)
+ef120799457bca042d4690944f0faf93268eb4654e7f50f28784ad63bdc1fe02  model.onnx
+b4342157b90229ee7380e165f3d8036179b80d1e6ae02f2557388b7fcd558c01  model.onnx.json
+0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0  LICENSE
+49f82176cff055b5e96c5e50db962aa89c280d3fcf3aac6aacfef94b9b950f8a  README.md

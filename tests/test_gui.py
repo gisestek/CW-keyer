@@ -108,3 +108,27 @@ def test_close_window_sends_stop_first(gui):
     win.close()
     assert wait(app, lambda: not s.busy, 3)
     assert stops and stops[-1]["reason"] == "shutdown"
+
+
+def test_app_icon_has_all_sizes(qapp):
+    from cwstation.gui.icon import SIZES, app_icon
+
+    icon = app_icon()
+    assert not icon.isNull()
+    assert {s.width() for s in icon.availableSizes()} >= set(SIZES)
+
+
+def test_too_long_input_is_kept_and_counter_turns_red(gui):
+    app, station, win, stops = gui
+    station.settings.set("keyer.max_message_s", 15)
+    win.wpm.setValue(20)
+    QTest.keyClicks(win.input, "paris " * 6)          # 17.8 s at 20 WPM
+    assert win.airtime.text() == "0:18 / 0:15" and "e74c3c" in win.airtime.styleSheet()
+    QTest.keyClick(win.input, Qt.Key_Return)
+    assert win.input.text().strip() == ("paris " * 6).strip(), "refused text was cleared"
+    pump(app, 0.3)
+    assert not sim(station).busy
+    win.input.setText("paris paris")
+    assert "e74c3c" not in win.airtime.styleSheet()
+    QTest.keyClick(win.input, Qt.Key_Return)
+    assert win.input.text() == ""

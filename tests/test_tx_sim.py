@@ -100,7 +100,7 @@ def test_unsupported_chars_dropped(rig):
 def test_disconnect_stops_keyer(rig):
     """SR-04: when the program disappears the keyer stops sending."""
     bus, rec, client, sim, st = rig
-    bus.publish("tx.send", text="PARIS " * 30)
+    bus.publish("tx.send", text="PARIS " * 15)
     assert rec.wait(lambda: sim.busy)
     client.shutdown()
     assert rec.wait(lambda: not sim.busy, 5)
@@ -111,3 +111,30 @@ def test_wpm_set_reaches_keyer(rig):
     bus.publish("tx.set", wpm=33)
     assert rec.wait(lambda: sim.cfg["wpm"] == 33, 3)
     assert st.get("keyer.wpm") == 33
+
+
+def test_too_long_message_is_refused(rig):
+    bus, rec, client, sim, st = rig
+    st.set("keyer.wpm", 20)
+    st.set("keyer.max_message_s", 30)
+    bus.publish("tx.send", text="PARIS " * 11)   # 32.8 s at 20 WPM
+    w = rec.of("tx.warning")[-1]
+    assert w["code"] == "too_long" and w["limit"] == 30 and 32 < w["seconds"] < 33
+    assert not rec.of("tx.queued")
+    time.sleep(0.3)
+    assert not sim.busy and not rec.of("tx.echo"), "refused text reached the keyer"
+    bus.publish("tx.send", text="PARIS " * 9)    # 26.8 s: fits
+    assert rec.of("tx.queued")
+
+
+def test_message_limit_stays_under_keyer_tx_limit(rig):
+    bus, rec, client, sim, st = rig
+    tx = TxModule(Bus(), st, client)
+    st.set("keyer.max_message_s", 100)
+    assert tx.message_limit_s() == 100
+    st.set("keyer.tx_max_ms", 60000)
+    assert tx.message_limit_s() == 50
+    st.set("keyer.type", "winkeyer")   # no firmware TX limit there
+    assert tx.message_limit_s() == 100
+    st.set("keyer.max_message_s", 500)
+    assert tx.message_limit_s() == 100

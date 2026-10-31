@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import math
 import time
 
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
@@ -109,6 +110,7 @@ class MainWindow(QMainWindow):
         self.wpm = QSpinBox(minimum=5, maximum=50, value=int(self.settings.get("keyer.wpm", 20)))
         self.wpm.setMinimumWidth(70)
         self.wpm.valueChanged.connect(lambda _: self._wpm_timer.start())
+        self.wpm.valueChanged.connect(lambda _: self._update_airtime())
         top.addWidget(self.wpm)
         self.match_btn = QPushButton(tr("rx.match"))
         self.match_btn.setToolTip(tr("rx.match.tip"))
@@ -214,7 +216,15 @@ class MainWindow(QMainWindow):
         big.setPointSize(mono.pointSize() + 2)
         self.input.setFont(big)
         self.input.returnPressed.connect(self._send_input)
-        left.addWidget(self.input)
+        self.input.textChanged.connect(self._update_airtime)
+        input_row = QHBoxLayout()
+        input_row.addWidget(self.input, 1)
+        # time on air / limit for one message; red when the text would be refused
+        self.airtime = QLabel()
+        self.airtime.setFont(mono)
+        self.airtime.setToolTip(tr("tx.airtime.tip"))
+        input_row.addWidget(self.airtime)
+        left.addLayout(input_row)
         macro_row = QHBoxLayout()
         self.macro_buttons = {}
         for key in sorted((self.settings.get("macros") or {}).keys()):
@@ -297,9 +307,30 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ actions
     def _send_input(self) -> None:
         text = self.input.text()
-        if text.strip():
-            self.bus.publish("tx.send", text=text)
-            self.input.clear()
+        if not text.strip():
+            return
+        if self._wpm_timer.isActive():  # a speed change still waiting: apply it first, so the
+            self._wpm_timer.stop()      # length check and the keyer use the same WPM
+            self.bus.publish("tx.set", wpm=self.wpm.value())
+        p = self.station.tx.prepare(text)
+        self.bus.publish("tx.send", text=text)
+        if p["seconds"] <= p["limit"]:
+            self.input.clear()   # too long: TX refuses it, the text stays here to be shortened
+
+    @staticmethod
+    def _mmss(seconds: float) -> str:
+        s = int(math.ceil(seconds - 1e-6))
+        return f"{s // 60}:{s % 60:02d}"
+
+    def _update_airtime(self) -> None:
+        text = self.input.text()
+        if not text.strip():
+            self.airtime.clear()
+            return
+        p = self.station.tx.prepare(text, self.wpm.value())
+        over = p["seconds"] > p["limit"]
+        self.airtime.setText(f"{self._mmss(p['seconds'])} / {self._mmss(p['limit'])}")
+        self.airtime.setStyleSheet("color:#e74c3c; font-weight:bold;" if over else "color:#7f8c8d;")
 
     def _send_macro(self, key: str) -> None:
         m = self.settings.get(f"macros.{key}") or {}
@@ -414,6 +445,7 @@ class MainWindow(QMainWindow):
             self.wpm.blockSignals(True)
             self.wpm.setValue(int(self.settings.get("keyer.wpm", 20)))
             self.wpm.blockSignals(False)
+            self._update_airtime()
 
     def _open_log(self) -> None:
         folder = self.settings.log_folder()
@@ -795,9 +827,12 @@ class MainWindow(QMainWindow):
                     "dropped_chars": tr("tx.dropped", chars=m.get("detail", "")),
                     "no_callsign": tr("tx.no_callsign"),
                     "no_call": tr("tx.no_call"),
-                    "tune_busy": tr("tx.tune_busy")}.get(code, code)
+                    "tune_busy": tr("tx.tune_busy"),
+                    "too_long": tr("tx.too_long", secs=self._mmss(m.get("seconds", 0)),
+                                   limit=self._mmss(m.get("limit", 0)), wpm=round(m.get("wpm", 0)))
+                    }.get(code, code)
             self.statusBar().showMessage(text, 8000)
-            if code in ("not_connected", "no_callsign", "no_call"):
+            if code in ("not_connected", "no_callsign", "no_call", "too_long"):
                 self._note(text)
         elif t == "keyer.status":
             state = m.get("state")

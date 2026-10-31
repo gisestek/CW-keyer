@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from cwstation.core import macros
 from cwstation.core.bus import Bus
 from cwstation.core.settings import DEFAULTS, Settings
@@ -33,6 +35,15 @@ def test_macro_expand_and_sanitize():
     assert macros.sanitize("äö #cq") == (" CQ", "ÄÖ#")
     clean, dropped = macros.sanitize("CQ <AR")
     assert clean == "CQ AR" and "<" in dropped
+
+
+def test_airtime_paris_timing():
+    assert macros.airtime_s("PARIS ", 20) == pytest.approx(3.0)        # 50 units
+    assert macros.airtime_s("PARIS PARIS", 12) == pytest.approx(96 * 0.1)
+    assert macros.airtime_s("E", 20) == pytest.approx(4 * 0.06)         # dit 1 + character gap 3
+    # prosign: no character gap inside <..>, one after it
+    assert macros.airtime_s("<SK>", 20) == pytest.approx(macros.airtime_s("SK", 20) - 2 * 0.06)
+    assert macros.airtime_s("", 20) == 0
 
 
 class Clock:

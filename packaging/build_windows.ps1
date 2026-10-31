@@ -25,8 +25,16 @@ if (-not (Test-Path "third_party\deepcw-engine\model.onnx")) {
 }
 
 Write-Host "Using Python: $pyExe $pyArgs"
-if (-not (Test-Path ".venv-build")) { & $pyExe @pyArgs -m venv .venv-build }
+if (-not (Test-Path ".venv-build")) {
+    & $pyExe @pyArgs -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"
+    if ($LASTEXITCODE -ne 0) { throw "Python 3.11 or newer is needed (python.org, 3.12 recommended); found: $(& $pyExe @pyArgs --version)" }
+    & $pyExe @pyArgs -m venv .venv-build
+}
 $vpy = Join-Path $Root ".venv-build\Scripts\python.exe"
+& $vpy -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"
+if ($LASTEXITCODE -ne 0) {
+    throw ".venv-build uses $(& $vpy --version); 3.11 or newer is needed. Delete the .venv-build folder and run this script again."
+}
 & $vpy -m pip install --upgrade pip
 & $vpy -m pip install -r requirements-dev.txt
 if ($LASTEXITCODE -ne 0) { throw "pip install failed" }

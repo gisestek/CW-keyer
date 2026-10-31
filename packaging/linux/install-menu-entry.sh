@@ -14,6 +14,8 @@ if [ "${1:-}" = "--remove" ]; then
 fi
 
 mkdir -p "$APPS"
+ICON="$DIR/_internal/cwstation/assets/icon-256.png"
+[ -f "$ICON" ] || ICON="$DIR/cwstation/assets/icon-256.png"
 cat > "$ENTRY" <<EOF
 [Desktop Entry]
 Type=Application
@@ -21,6 +23,8 @@ Name=CW Station
 Comment=Decode and send CW (Morse) with your radio
 Exec="$DIR/CWStation"
 Path=$DIR
+Icon=$ICON
+StartupWMClass=cwstation
 Terminal=false
 Categories=HamRadio;Network;
 Keywords=CW;Morse;ham;radio;

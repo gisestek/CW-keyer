@@ -132,6 +132,7 @@ DeepCW:n tulkinnasta ja äänestä irtoaa enemmän tietoa kuin pelkkä teksti. V
 | FR-RX-09 nopeus ja taajuusero (0.4.0) | Vastaaseman WPM, *Match*-painike ja Δ Hz omaan sivuääneen |
 | FR-CORE-07 RST-ehdotus (0.5.0) | SNR 500 Hz:n kaistassa → raporttiehdotus työkaluriville ja QSO-kenttään |
 | FR-TX-08 WinKeyer-tuki (0.6.0) | Sarjaportin host mode, kaiku, nopeus, STOP; valinta asetuksista |
+| Viestin enimmäispituus | Yksi teksti tai makro saa kestää ilmassa enintään 60 s nykyisellä nopeudella (asetus 15–100 s, WiFi-keyerillä aina 10 s alle sen TX-rajan). Pidempää ei lähetetä lainkaan, ja teksti jää syöttöriville lyhennettäväksi. Syöttörivin vieressä näkyy lähetysaika / raja, punaisena kun raja ylittyy |
 | SR-01 STOP | Aina näkyvä STOP-painike ja Esc mistä tahansa; keyer nostaa avaimen alle 3 ms:ssa |
 | SR-02, SR-03 aikarajat | Keyer: avain alhaalla enintään 10,5 s, lähetys enintään 120 s ilman uutta tekstiä. Asetuksissa voi laskea |
 | SR-04 yhteyskatkos tai kaatuminen | Keyer pysähtyy 3 s:ssa, jos ohjelmasta ei kuulu mitään, ja heti, jos yhteys katkeaa |

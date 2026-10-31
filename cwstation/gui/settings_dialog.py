@@ -115,6 +115,10 @@ class SettingsDialog(QDialog):
         self.tune_s = QSpinBox(minimum=1, maximum=10, value=int(settings.get("keyer.tune_s", 5)))
         self.tune_s.setSuffix(" s")
         f.addRow(tr("settings.keyer.tune"), self.tune_s)
+        self.max_message = QSpinBox(minimum=15, maximum=100, singleStep=5,
+                                    value=int(settings.get("keyer.max_message_s", 60)))
+        self.max_message.setSuffix(" s")
+        f.addRow(tr("settings.keyer.max_message"), self.max_message)
         self.limits_note = QLabel(tr("settings.keyer.limits_note"))
         self.limits_note.setWordWrap(True)
         f.addRow(self.limits_note)
@@ -306,6 +310,7 @@ class SettingsDialog(QDialog):
         s.set("keyer.weight", self.weight.value())
         s.set("keyer.keydown_max_ms", self.keydown.value())
         s.set("keyer.tx_max_ms", self.txmax.value())
+        s.set("keyer.max_message_s", self.max_message.value())
         s.set("log.folder", self.log_folder.text().strip())
         s.set("log.line_pause_s", self.pause.value())
         s.set("qso.adif_file", self.adif_file.text().strip())

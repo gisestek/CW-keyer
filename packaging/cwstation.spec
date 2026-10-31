@@ -12,6 +12,7 @@ if not (MODEL / "model.onnx").exists():
 
 datas = [
     (str(ROOT / "cwstation" / "i18n"), "cwstation/i18n"),
+    (str(ROOT / "cwstation" / "assets"), "cwstation/assets"),
     (str(MODEL / "model.onnx"), "models/deepcw-engine"),
     (str(MODEL / "model.onnx.json"), "models/deepcw-engine"),
     (str(ROOT / "LICENSE"), "."),
@@ -67,6 +68,6 @@ exe = EXE(
     exclude_binaries=True,
     name="CWStation",
     console=False,
-    icon=None,
+    icon=str(ROOT / "cwstation" / "assets" / "icon.ico"),  # packaging/make_icon.py
 )
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="CWStation")

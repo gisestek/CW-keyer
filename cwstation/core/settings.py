@@ -30,6 +30,7 @@ DEFAULTS: dict = {
         "tx_max_ms": 120000,
         "heartbeat_ms": 3000,
         "tune_s": 5,                 # TUNE length; the WiFi keyer caps it at 10 s (FR-TX-08)
+        "max_message_s": 60,         # longest single text/macro on air; longer ones are refused
     },
     "log": {"folder": "", "line_pause_s": 3.0},
     "ui": {"language": "en", "font_size": 13, "window": None, "waterfall_seconds": 12, "splitter": None,

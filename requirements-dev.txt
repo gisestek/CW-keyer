@@ -2,3 +2,4 @@
 pytest>=8
 pytest-github-actions-annotate-failures>=0.2  # failing tests as annotations on GitHub, no effect elsewhere
 pyinstaller>=6.6
+pillow  # packaging/make_icon.py (regenerates cwstation/assets)
