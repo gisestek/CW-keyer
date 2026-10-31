@@ -1,0 +1,4 @@
+.pio/
+.vscode/
+test/test_keyer
+test/test_keyer.exe
