@@ -1,12 +1,12 @@
-# Where the files in this folder come from. Replace this file whenever the model is updated;
+# Where the files in this folder come from (model v2; model_narrow.onnx not used). Replace this file whenever the model is updated;
 # .github/workflows/deepcw-upstream.yml checks it weekly against upstream and opens an issue on changes.
 repo=e04/deepcw-engine
-commit=8e264d243bbd4467bd19f3f28292219405b47e0e
-date=2026-06-16
-license=AGPL-3.0-only
+commit=79104fbe1ea0abd09eb27c6ebf9c6bab364d0d7f
+date=2026-10-27
+license=MIT  (v1 before 79104fb was AGPL-3.0-only)
 
 # sha256 of the copied files (check by hand:  grep -E '^[0-9a-f]{64} ' UPSTREAM | sha256sum -c)
-ef120799457bca042d4690944f0faf93268eb4654e7f50f28784ad63bdc1fe02  model.onnx
-b4342157b90229ee7380e165f3d8036179b80d1e6ae02f2557388b7fcd558c01  model.onnx.json
-0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0  LICENSE
-49f82176cff055b5e96c5e50db962aa89c280d3fcf3aac6aacfef94b9b950f8a  README.md
+cd5ee38106348ad86a8f2d40ef1ce7dccea0d7f7fbfd0f2dee0fd1a8a28773ae  model.onnx
+4e7729dcc64c2a208deb28beac4ded55632d11cb70337a9c0ddce523e73bdd9c  model.onnx.json
+a642403fa38730e625c32045d42a78a0addd218417fff61502ba302717aec410  LICENSE
+9960437cd343a8eb01cacc71d2cb9d7e9f234053af2d12fb954d5126ce3697e3  README.md

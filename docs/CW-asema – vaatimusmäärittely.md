@@ -40,7 +40,7 @@ Asema koostuu TS-515:stä, WinKeyer-yhteensopivasta keyeristä, Xiegu DE-19:sta 
 | Varalaite | Xiegu DE-19 | Pysyy G90:n käytössä. |
 | Tietokone | Windows ensisijainen, Linux toissijainen | Kellon NTP-synkronointi (UTC-aikaleimat). |
 | Loki | Wavelog + WaveLogGate | QSO:t Gaten UDP-porttiin tai suoraan Wavelogin API:in; aina myös paikallinen .adi. |
-| Tulkki | DeepCW (e04) | ONNX-malli, AGPL-3.0. |
+| Tulkki | DeepCW (e04) | ONNX-malli. v2 (10/2026) MIT, v1 AGPL-3.0. |
 
 ## 4. Arkkitehtuuri ja moduulit
 
@@ -163,7 +163,7 @@ Ohjelmiston pitää toimia Windowsilla sujuvasti tavallisella kotikoneella ilman
 | NFR-03 | Tulkinta pyörii reaaliajassa tavallisella kannettavalla ilman erillistä näytönohjainta. |
 | NFR-04 | Moduulien välinen viestintä dokumentoidaan (JSON-skeemat), jotta moduuleja voi vaihtaa ja ajaa eri prosesseissa. |
 | NFR-05 | Aikaleimat UTC:ssä; kellon epäsynkronista varoitetaan, jos se on havaittavissa. |
-| NFR-06 | Lisenssi: projekti julkaistaan AGPL-3.0-yhteensopivana, koska DeepCW-moottori on AGPL-3.0. |
+| NFR-06 | Lisenssi: projekti julkaistaan AGPL-3.0-or-later-lisenssillä. Alun perin pakko, koska DeepCW v1 oli AGPL-3.0; v2-malli on MIT, ja AGPL pidetään omana valintana (2026-10-31). |
 | NFR-07 | Asetukset ja lokit ovat ihmisluettavia tiedostoja (esim. JSON/TOML ja teksti). |
 | NFR-08 | Käyttöliittymän kieli: suomi tai englanti; CW-teksti ja ADIF aina ASCII. |
 
@@ -175,7 +175,7 @@ Järjestelmä käyttää viittä valmista rajapintaa, joten omaa laitteisto- tai
 | --- | --- | --- | --- |
 | Keyer | Tietokone → keyer | WinKeyer-protokolla, USB-sarjaportti (CH340) | MK2/K3NG emuloi. Ei Hell-avainnusta (USB-viive); Hell audiona. |
 | Ääni | Radio → tietokone | Järjestelmän äänilaite (sisäinen äänikortti tai DigiRig), 48 kHz | DeepCW-malli odottaa monoa, 3200 Hz, 16-bit – uudelleen näytteistys ohjelmassa. |
-| Tulkki | Sisäinen | [DeepCW Engine](https://github.com/e04/deepcw-engine), ONNX | Python- ja Node.js-esimerkit valmiina. AGPL-3.0. |
+| Tulkki | Sisäinen | [DeepCW Engine](https://github.com/e04/deepcw-engine), ONNX | Python- ja Node.js-esimerkit valmiina. v2: MIT (v1: AGPL-3.0). |
 | Wavelog | Tietokone → Wavelog | [WaveLogGate](https://github.com/wavelog/WaveLogGate) UDP 2333 (ADIF) tai [Wavelog API](https://docs.wavelog.org/developer/api/) `POST /api/qso` | API vaatii avaimen ja `station_profile_id`:n. |
 | ADIF | Tietokone → tiedosto | ADIF 3.x .adi | Kentät: CALL, QSO\_DATE, TIME\_ON, TIME\_OFF, BAND, FREQ, MODE=CW, RST\_SENT, RST\_RCVD, NAME, QTH, GRIDSQUARE, TX\_PWR, COMMENT. |
 
@@ -228,7 +228,7 @@ Suurin avoin asia on toteutusteknologia; suurin riski on, ettei DeepCW-moottori 
 | DeepCW:n tarkkuusväitteet ovat tekijän omia | Tulkinta heikompi kuin odotettu | Vertailu samaan äänitteeseen Morse Expertin kanssa ennen sitoutumista. |
 | Keyerin optoerotin ei kestä avainjännitettä | Laite tai radio vaurioituu | Mittaus ennen kytkentää; tarvittaessa H11D1 tai reed-rele väliin. |
 | RF-häiriöt USB-laitteisiin 100 W:n lähetyksessä | Yhteyskatkot, jumiutuva avain | Ferriitit, lyhyet johdot, SR-04. |
-| AGPL-3.0 rajoittaa lisensointia | Suljettu jakelu ei mahdollinen | Hyväksytään: harrasteprojekti julkaistaan avoimena. |
+| AGPL-3.0 rajoittaa lisensointia | Suljettu jakelu ei mahdollinen | Hyväksytään: harrasteprojekti julkaistaan avoimena. (DeepCW v2 on MIT, joten pakko poistui; AGPL pidetään valintana.) |
 |  |  |  |
 
 ## 12. Siirtyminen projektiksi

@@ -1,6 +1,6 @@
 """DeepCW model wrapper and streaming decoder (see rx/deepcw/README.md).
 
-Malli ja spektrogrammi: e04/deepcw-engine (AGPL-3.0-only).
+Malli ja spektrogrammi: e04/deepcw-engine (malli v2: MIT; vanha v1: AGPL-3.0-only).
 Striimauslogiikka mukailee e04/web-deep-cw-decoder -sovelluksen
 useStreamingDecode-algoritmia: puskuroitu ääni dekoodataan noin kerran
 sekunnissa, tulos näytetään esikatseluna, ja teksti vahvistetaan viimeisen
@@ -37,6 +37,12 @@ class DecodeResult:
     frames: int
 
 
+# Merkki pudotetaan, jos sen varmin kehys on tätä epävarmempi. v2-malli "kuulee" puhtaasta
+# kohinasta joskus lyhyen kirjaimen (ilman suodatinta 5,6 merkkiä minuutissa, 0,90:llä ei yhtään).
+# Sama arvo kuin ohjelmassa (cwstation/rx/deepcw.py). v1:n merkit ovat aina ~1,0.
+MIN_CHAR_CONFIDENCE = 0.90
+
+
 class DeepCWModel:
     def __init__(self, model_path: Path, metadata_path: Path, threads: int = 0):
         with open(metadata_path, "r", encoding="utf-8") as f:
@@ -45,6 +51,8 @@ class DeepCWModel:
         self.sample_rate = int(m["sample_rate"])
         self.fft = int(m["fft_length"])
         self.hop = int(m["hop_length"])
+        self.stride = int(m.get("output_time_stride", 1))   # v2: yksi tuloskehys per 2 spektrikehystä
+        self.frame_hop = self.hop * self.stride
         self.chars: list[str] = list(m["chars"])
         self.blank = int(m["blank_index"])
         self.space = self.chars.index(" ")
@@ -53,8 +61,13 @@ class DeepCWModel:
         self.bin_stop = int(math.floor(float(m["spectrogram_max_freq_hz"]) / bin_hz)) + 1
         if self.bin_stop - self.bin_start != int(m["spectrogram_frequency_bins"]):
             raise ValueError("metadata frequency bins mismatch")
-        if m.get("normalization") != "log1p":
-            raise ValueError("unsupported normalization")
+        norm = str(m.get("normalization", ""))
+        if norm == "log1p":
+            self.noise_q = None
+        elif norm.startswith("noise_q") and norm.endswith("_log1p"):
+            self.noise_q = float(m.get("noise_level_quantile", 0.9))
+        else:
+            raise ValueError(f"unsupported normalization: {norm}")
         self.window = np.hanning(self.fft + 1)[:-1].astype(np.float32)
         opts = ort.SessionOptions()
         if threads:
@@ -65,7 +78,7 @@ class DeepCWModel:
 
     @property
     def seconds_per_frame(self) -> float:
-        return self.hop / self.sample_rate
+        return self.frame_hop / self.sample_rate
 
     def spectrogram(self, audio: np.ndarray) -> np.ndarray:
         """[1, 1, time, freq] float32, sama laskenta kuin deepcw-enginen esimerkissä."""
@@ -74,19 +87,31 @@ class DeepCWModel:
         frames = 1 + (len(x) - self.fft) // self.hop
         idx = np.arange(self.fft)[None, :] + self.hop * np.arange(frames)[:, None]
         spec = np.abs(np.fft.rfft(x[idx] * self.window, n=self.fft, axis=1))[:, self.bin_start:self.bin_stop]
-        spec = np.log1p(spec.astype(np.float32))
+        spec = spec.astype(np.float32)
+        if self.noise_q is None:
+            spec = np.log1p(spec)
+        elif spec.size:
+            # v2: kohinataso kvantiilista, Rayleigh-jakauma oletuksena (kuten deepcw-enginen esimerkissä)
+            flat = np.sort(spec.reshape(-1))
+            rayleigh = math.sqrt(-2.0 * math.log(1.0 - self.noise_q))
+            noise = max(float(flat[math.floor(self.noise_q * (len(flat) - 1))]) / rayleigh,
+                        float(flat[-1]) * 1e-3, 1e-5)
+            spec = np.log1p(spec / np.float32(noise))
         return spec[np.newaxis, np.newaxis, :, :]
 
     def decode(self, audio: np.ndarray) -> DecodeResult:
         if len(audio) < self.fft:
             return DecodeResult("", [], [], 0)
         spec = self.spectrogram(audio)
-        logp = self.session.run([self.out_name], {self.in_name: spec})[0][0]
-        best = logp.argmax(axis=-1)
-        return self._ctc(best)
+        out = self.session.run([self.out_name], {self.in_name: spec})[0][0]
+        best = out.argmax(axis=-1)
+        top = out[np.arange(len(best)), best]
+        conf = 1.0 / np.exp(out - top[:, None]).sum(axis=-1)
+        return self._ctc(best, conf)
 
-    def _ctc(self, best: np.ndarray) -> DecodeResult:
+    def _ctc(self, best: np.ndarray, conf: np.ndarray | None = None) -> DecodeResult:
         spans: list[CharSpan] = []
+        peak: list[float] = []
         spaces: list[tuple[int, int]] = []
         prev = None
         space_start = -1
@@ -100,13 +125,17 @@ class DeepCWModel:
             if i == self.blank:
                 prev = None
                 continue
+            c = 1.0 if conf is None else float(conf[f])
             if i == prev:
                 spans[-1].end_frame = f
+                peak[-1] = max(peak[-1], c)
                 continue
             prev = i
             spans.append(CharSpan(self.chars[i], f, f))
+            peak.append(c)
         if space_start >= 0:
             spaces.append((space_start, len(best) - 1))
+        spans = [sp for sp, c in zip(spans, peak) if sp.char == " " or c >= MIN_CHAR_CONFIDENCE]
         text = "".join(s.char for s in spans)
         return DecodeResult(text, spans, spaces, len(best))
 
@@ -186,7 +215,7 @@ class StreamingDecoder:
         return (self._offset + sample) / self.m.sample_rate
 
     def _frame_to_sample(self, frame: float) -> int:
-        return int(round(frame * self.m.hop))  # kehys f keskittyy näytteeseen f*hop
+        return int(round(frame * self.m.frame_hop))  # kehys f keskittyy näytteeseen f*hop
 
     def _step(self, force_all: bool) -> list[StreamEvent]:
         import time
@@ -201,7 +230,7 @@ class StreamingDecoder:
         self.infer_calls += 1
 
         events: list[StreamEvent] = []
-        skip_frame = self._skip / self.m.hop
+        skip_frame = self._skip / self.m.frame_hop
         new_spans = [c for c in res.char_spans if c.start_frame >= skip_frame]
         pending_text = normalize_text("".join(c.char for c in new_spans))
         if pending_text != self.last_pending:

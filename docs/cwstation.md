@@ -17,9 +17,11 @@ Tietokoneohjelma, jolla CW-yhteydet onnistuvat ilman omaa sähkötystaitoa. [Dee
 | `docs/` | Vaatimusmäärittely, tämä käyttöohje, viestiskeemat (`messages.md`) |
 | `packaging/` | Windows- ja Linux-paketointi (PyInstaller) |
 | `tests/` | Automaattiset testit |
-| `third_party/deepcw-engine/` | DeepCW-malli (AGPL-3.0) |
+| `third_party/deepcw-engine/` | DeepCW-malli v2 (MIT); upstream-versio ja tarkistussummat tiedostossa `UPSTREAM` |
 
 ## Uutta seuraavassa versiossa
+
+**Uusi DeepCW-malli (v2).** Tulkki käyttää DeepCW:n lokakuun 2026 mallia. Heikot signaalit tulkkautuvat selvästi paremmin (esim. −15 dB:n tasainen signaali: merkkivirhe 37 % aiemman 51 %:n sijaan), ja tulkinta vie noin puolet aiemmasta laskenta-ajasta. Uusi malli kuulee puhtaasta kohinasta joskus lyhyen kirjaimen, joten epävarmat merkit suodatetaan pois. Vertailu: `rx/deepcw/README.md`. Mallin lisenssi on nyt MIT; CW Station pysyy AGPL-3.0-or-later-lisenssissä.
 
 **Tunnuspaneeli ja QRZ.com-haku.** Tekstivirran oikealle puolelle jäävä tyhjä tila on nyt tunnuspaneeli. Kun klikkaat tunnusta, se asettuu vastaasemaksi kuten ennenkin, ja paneeli näyttää sen tiedot QRZ.comista: nimi, QTH, maa, lokaattori, etäisyys ja suuntima omasta lokaattorista, lupaluokka, QSL-tavat (LoTW, eQSL, suora, manageri), CQ/ITU-vyöhykkeet ja kuva.
 

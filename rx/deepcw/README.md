@@ -25,11 +25,37 @@ Ennen oikeita äänitteitä striimaava tulkki ajettiin 140 minuutin synteettisen
 - Heikoimpien signaalien viiveen pitkät p90-arvot johtuvat mittaustavasta: väärin tulkittu sana viivästää seuraavien sanojen tunnistusta vertailussa.
 - "20 s palat" -sarake on vertailukohta: kiinteät palat katkeavat kesken merkkien, striimaava logiikka ei.
 
+## DeepCW v2 -malli (2026-10-31)
+
+Malli päivitettiin upstreamin versioon `79104fb` (v2, lisenssi MIT). Muutokset mallin käytössä:
+
+- **Normalisointi:** spektrogrammi jaetaan ennen `log1p`:tä kohinatasolla, joka arvioidaan ikkunan magnitudien 90 %:n kvantiilista (`noise_q90_log1p`).
+- **Aika-askel:** malli antaa yhden tuloskehyksen kahta spektrikehystä kohti (`output_time_stride: 2`, eli 96 näytettä = 30 ms).
+- **Haamumerkit:** v2 "kuulee" puhtaasta kohinasta joskus lyhyen kirjaimen (E, I, S…). Siksi merkki pudotetaan, jos sen varmin kehys on alle 0,90 (`MIN_CHAR_CONFIDENCE`). v1:n merkit ovat aina ~1,0, joten suodatin ei muuta sen tuloksia.
+
+Molemmat tulkit (`cwstation/rx/deepcw.py` ja tämän kansion `deepcw_decoder.py`) toimivat sekä v1- että v2-mallilla.
+
+Vertailu ohjelman omalla striimaavalla tulkilla (`stream_benchmark.py`, pilvikone 2 vCPU, 6 tekstiä × ~100 merkkiä per rivi, 18 ja 26 WPM). Merkkivirhe (CER) %:
+
+| Olosuhde | v1 | v2 ilman suodatinta | v2, 0,80 | **v2, 0,90** | v2, 0,95 |
+| --- | --- | --- | --- | --- | --- |
+| Tasainen, ≥ −9 dB | 0–0,3 | 0 | 0 | **0** | 0–0,3 |
+| Tasainen, −12 dB | 4,8 | 1,7 | 2,1 | **2,4** | 2,8 |
+| Tasainen, −15 dB | 51,4 | 14,5 | 27,9 | **36,6** | 43,8 |
+| QSB 10 dB + käsiavain 10 %, −6 dB | 1,7 | 2,4 | 2,8 | **3,4** | 4,1 |
+| QSB + käsiavain, −9 dB | 13,8 | 10,0 | 11,4 | **13,4** | 15,5 |
+| QSB + käsiavain, −12 dB | 37,9 | 30,3 | 29,0 | **31,0** | 33,4 |
+| QSB + käsiavain, −15 dB | 65,2 | 44,8 | 49,7 | **54,1** | 59,3 |
+| Haamumerkit / min puhtaassa kohinassa | 0 | 5,6 | 0,4 | **0** | 0 |
+| CPU-aika / äänen kesto | 5,6 % | 3,1 % | 2,9 % | **3,0 %** | 3,0 % |
+
+- v2 on heikoilla signaaleilla selvästi parempi ja vie noin puolet v1:n laskenta-ajasta. Alle 2 %-yksikön erot ovat tällä otoksella kohinaa.
+- Synteettinen valkoinen kohina ei vastaa bändiä (QRN, QRM). Haamumerkkien määrä ja suodatinraja kannattaa tarkistaa oikeilla äänitteillä.
+
 ## Asennus (Windows)
 
 1. Asenna [Python 3.11 tai 3.12](https://www.python.org/downloads/) ja valitse asennuksessa *Add python.exe to PATH*.
-2. Malli on valmiina kansiossa `third_party/deepcw-engine` (`model.onnx`, `model.onnx.json`, AGPL-3.0-lisenssi).
-   - Samassa kansiossa on keskeneräisestä git-kloonauksesta jäänyt `.git`-kansio. Sen voi poistaa.
+2. Malli on valmiina kansiossa `third_party/deepcw-engine` (`model.onnx`, `model.onnx.json`, MIT-lisenssi; upstream-versio ja tarkistussummat tiedostossa `UPSTREAM`).
 3. Komentokehotteessa projektikansiossa:
 
 ```

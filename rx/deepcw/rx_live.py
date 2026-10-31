@@ -12,7 +12,7 @@ Tulostus: vahvistettu teksti UTC-aikaleimoin, alimmalla rivillä esikatselu
 (voi vielä muuttua), tulotaso ja voimakkain äänitaajuus.
 --jsonl tallentaa tapahtumat JSON-riveinä (FR-RX-03).
 
-Lisenssi: AGPL-3.0-or-later. Käyttää DeepCW-mallia (e04/deepcw-engine, AGPL-3.0-only).
+Lisenssi: AGPL-3.0-or-later. Käyttää DeepCW-mallia (e04/deepcw-engine, v2: MIT).
 """
 from __future__ import annotations
 
